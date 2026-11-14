@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 from base64 import b64encode
 from datetime import datetime
 from urllib.parse import urlencode
@@ -26,6 +27,7 @@ _EPAY_TYPE = {
 }
 _GATEWAY_TIMEOUT = 180
 _GATEWAY_TIMEOUT_MAX = 3600
+logger = logging.getLogger(__name__)
 
 
 def open_payment(
@@ -53,6 +55,26 @@ def open_payment(
     if provider is PaymentProvider.EPAY and isinstance(detail, EpayChannel):
         return _epay(channel, detail, order_no=order_no, subject=subject, amount_cents=amount_cents)
     raise BizException("支付渠道无效", code=BizCode.BAD_REQUEST)
+
+
+def close_remote_payment(
+    channel: PaymentChannel,
+    detail: AlipayChannel | WechatChannel | EpayChannel | BepusdtChannel,
+    channel_trade_no: str | None,
+) -> None:
+    """本地没记下收银台时，关掉渠道侧已经打开的交易。关单失败只记日志，不盖住原来的异常。"""
+    if not channel_trade_no or PaymentProvider(channel.provider) is not PaymentProvider.BEPUSDT:
+        return
+    if not isinstance(detail, BepusdtChannel):
+        return
+    try:
+        from shopbot.framework.client.payments import create_client
+
+        client = create_client(detail.api_url, detail.api_token)
+    except Exception:
+        logger.exception("关闭 BEpusdt 订单失败 trade_id=%s", channel_trade_no)
+        return
+    _cancel_bepusdt(client, channel_trade_no)
 
 
 def copy_payment_party(channel: PaymentChannel, detail: object) -> tuple[PaymentChannel, object]:
@@ -144,16 +166,30 @@ def _bepusdt(
     try:
         from shopbot.framework.client.payments import create_client
 
-        created = create_client(detail.api_url, detail.api_token).create_order(**request)
+        client = create_client(detail.api_url, detail.api_token)
+        created = client.create_order(**request)
     except Exception as exc:
         raise BizException("支付渠道下单失败", code=BizCode.BAD_REQUEST) from exc
-    amount_text = created.actual_amount_text or str(created.actual_amount)
-    return ChannelPayment(
-        channel_trade_no=created.trade_id,
-        pay_amount=amount_text,
-        pay_target=created.token or None,
-        pay_url=created.payment_url or None,
-    )
+    try:
+        return ChannelPayment(
+            channel_trade_no=created.trade_id,
+            pay_amount=str(created.actual_amount),
+            pay_target=created.token or None,
+            pay_url=created.payment_url or None,
+        )
+    except Exception:
+        _cancel_bepusdt(client, getattr(created, "trade_id", None))
+        raise
+
+
+def _cancel_bepusdt(client: object, trade_id: str | None) -> None:
+    cancel = getattr(client, "cancel_order", None)
+    if not trade_id or cancel is None:
+        return
+    try:
+        cancel(trade_id)
+    except Exception:
+        logger.exception("关闭 BEpusdt 订单失败 trade_id=%s", trade_id)
 
 
 def _alipay(detail: AlipayChannel, *, order_no: str, subject: str, amount_cents: int) -> ChannelPayment:

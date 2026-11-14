@@ -4,9 +4,10 @@
 同一事务里先按条件更新余额，再写入流水。余额不足或超过上限时整笔回滚。
 带关联编号的流水只能记一次，避免同一笔业务重复入账或扣款。
 充值走支付渠道，回调确认后入账。购买商品从余额扣款。
-渠道请求在写事务之外，由支付线程池执行。失败则关闭充值单。
+渠道请求在写事务之外，由支付线程池执行。失败则关闭充值单。渠道已经建单时一并关闭远程订单。
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -25,11 +26,12 @@ from shopbot.shop.models import PaymentNotice, ShopSetting, User, WalletLedger, 
 from shopbot.shop.user.service import get_user
 from shopbot.shop.wallet.schemas import RechargeCreate, RechargePageQuery, WalletChange, parse_model
 from shopbot.system.payment.confirm import VerifiedPayment
-from shopbot.system.payment.drivers import copy_payment_party, open_payment, payment_timeout_seconds
+from shopbot.system.payment.drivers import close_remote_payment, copy_payment_party, open_payment, payment_timeout_seconds
 from shopbot.system.payment.gateway import ChannelPayment
 from shopbot.system.payment.service import get_payment_channel
 from shopbot.system.vault import protect, reveal, show
 
+logger = logging.getLogger(__name__)
 _RECHARGE_TIMEOUT_SECONDS = 900
 _RECHARGE_PENDING_LIMIT = 3
 
@@ -181,11 +183,12 @@ class _RechargeRequest:
 
 
 async def recharge_wallet(factory: async_sessionmaker[AsyncSession], payload: RechargeCreate | dict) -> WalletRecharge:
-    """创建充值单并向渠道要收银台。到账金额在回调确认后入账。渠道失败则关闭充值单。"""
+    """创建充值单并向渠道要收银台。到账金额在回调确认后入账。渠道失败则关闭充值单。收银台没记下时关闭远程订单。"""
     data = parse_model(RechargeCreate, payload)
     prepare_user_lookup(data.user_id)
     async with write_slot():
         pending = await _create_recharge(factory, data)
+    payment = None
     try:
         payment = await run_blocking(
             open_payment,
@@ -199,13 +202,17 @@ async def recharge_wallet(factory: async_sessionmaker[AsyncSession], payload: Re
             timeout_seconds=pending.timeout_seconds,
             cny_rates=pending.cny_rates,
         )
-    except Exception:
-        await _abort_recharge(factory, pending.recharge_id)
-        raise
-    try:
         return await _store_recharge_payment(factory, pending.recharge_id, payment)
     except Exception:
-        await _abort_recharge(factory, pending.recharge_id)
+        try:
+            await _abort_recharge(factory, pending.recharge_id)
+        except Exception:
+            logger.exception("关闭本地充值单失败 recharge_id=%s", pending.recharge_id)
+        if payment is not None:
+            try:
+                await run_blocking(close_remote_payment, pending.channel, pending.detail, payment.channel_trade_no)
+            except Exception:
+                logger.exception("关闭远程支付订单失败 recharge_no=%s", pending.recharge_no)
         raise
 
 
