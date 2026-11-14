@@ -2,7 +2,7 @@
 
 在线待支付订单按用户、状态、过期时间查询，走 ix_orders_user_pending。
 在线待支付订单达到店铺上限时拒绝。上限读商家配置，初始为 3。配置为 3 时，第 4 笔拒绝。
-不存在的用户和超额的用户查询在打开数据库前拒绝。渠道请求在写事务之外，由支付线程池执行。
+不存在的用户和超额的用户查询在打开数据库前拒绝。渠道请求在写事务之外，由支付线程池执行。渠道已经建单、本地却失败回滚时，关闭远程订单。
 扣库存由商品上的策略决定。日常策略按购买数量下单即占用，营销策略固定一张并在支付成功后占用。
 下单时读取已配置的支付渠道和购买数量，把收银台地址写入订单详情。状态写成待支付。
 易支付、支付宝、微信按店铺汇率把商品金额折成人民币后再交给渠道。
@@ -17,6 +17,7 @@
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -49,12 +50,13 @@ from shopbot.shop.product.service import get_product
 from shopbot.shop.user.service import get_user
 from shopbot.system.models import AlipayChannel, BepusdtChannel, EpayChannel, WechatChannel
 from shopbot.system.payment.confirm import ChannelKeys, VerifiedPayment, confirm_callback
-from shopbot.system.payment.drivers import copy_payment_party, open_payment, payment_timeout_seconds
+from shopbot.system.payment.drivers import close_remote_payment, copy_payment_party, open_payment, payment_timeout_seconds
 from shopbot.system.payment.gateway import ChannelPayment
 from shopbot.shop.wallet.service import close_expired_recharges, debit_balance, settle_recharge, to_usdt_cents
 from shopbot.system.audit.service import audit
 from shopbot.system.payment.service import get_payment_channel
 
+logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT_SECONDS = 900
 _DEFAULT_PENDING_LIMIT = 3
 _EXPIRE_BATCH = 100
@@ -85,11 +87,12 @@ async def place_order(
     factory: async_sessionmaker[AsyncSession],
     payload: OrderCreate | dict,
 ) -> tuple[Order, OrderDetail]:
-    """先提交待支付订单，再在线程池向渠道要收银台。渠道失败则关单并退回库存。"""
+    """先提交待支付订单，再在线程池向渠道要收银台。渠道失败则关单并退回库存。收银台没记下时关闭远程订单。"""
     data = parse_model(OrderCreate, payload)
     prepare_user_lookup(data.user_id)
     async with write_slot():
         pending = await _create_pending_order(factory, data)
+    payment = None
     try:
         payment = await run_blocking(
             open_payment,
@@ -103,13 +106,17 @@ async def place_order(
             timeout_seconds=pending.timeout_seconds,
             cny_rates=pending.cny_rates,
         )
-    except Exception:
-        await _abort_pending_order(factory, pending.order_id)
-        raise
-    try:
         return await _store_channel_payment(factory, pending.order_id, payment)
     except Exception:
-        await _abort_pending_order(factory, pending.order_id)
+        try:
+            await _abort_pending_order(factory, pending.order_id)
+        except Exception:
+            logger.exception("关闭本地待支付订单失败 order_id=%s", pending.order_id)
+        if payment is not None:
+            try:
+                await run_blocking(close_remote_payment, pending.channel, pending.detail, payment.channel_trade_no)
+            except Exception:
+                logger.exception("关闭远程支付订单失败 order_no=%s", pending.order_no)
         raise
 
 
