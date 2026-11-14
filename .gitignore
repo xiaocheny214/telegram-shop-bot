@@ -1,0 +1,8 @@
+.env
+.idea/
+.venv/
+.npm-cache/
+__pycache__/
+*.py[cod]
+data/*.db
+data/*.db-*

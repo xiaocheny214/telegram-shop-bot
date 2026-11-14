@@ -1,0 +1,27 @@
+services:
+  shopbot:
+    build: .
+    env_file:
+      - .env
+    environment:
+      # 容器内必须监听所有网卡，端口才能映射出来。.env 里的 127.0.0.1 不会覆盖这里。
+      HOST: 0.0.0.0
+      PORT: "8000"
+      DATABASE_PATH: /app/data/shop.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
