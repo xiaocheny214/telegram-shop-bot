@@ -2,7 +2,7 @@
 
 在线待支付订单按用户、状态、过期时间查询，走 ix_orders_user_pending。
 在线待支付订单达到店铺上限时拒绝。上限读商家配置，初始为 3。配置为 3 时，第 4 笔拒绝。
-不存在的用户和超额的用户查询在打开数据库前拒绝。渠道请求在写事务之外，由支付线程池执行。渠道已经建单、本地却失败回滚时，关闭远程订单。
+不存在的用户和超额的用户查询在打开数据库前拒绝。渠道请求在写事务之外，由支付线程池执行。渠道已经建单、本地却失败回滚时，关闭远程订单。买家手动取消待支付订单并提交成功后，同样关闭对应的 BEpusdt 订单。
 扣库存由商品上的策略决定。日常策略按购买数量下单即占用，营销策略固定一张并在支付成功后占用。
 下单时读取已配置的支付渠道和购买数量，把收银台地址写入订单详情。状态写成待支付。
 易支付、支付宝、微信按店铺汇率把商品金额折成人民币后再交给渠道。
@@ -66,6 +66,15 @@ _ACK = {
     PaymentProvider.WECHAT: '{"code":"SUCCESS","message":"成功"}',
     PaymentProvider.BEPUSDT: "ok",
 }
+
+
+@dataclass(frozen=True)
+class _RemotePayment:
+    """本地取消已经提交后，用来关闭渠道侧交易。对象不挂在会话上。"""
+
+    channel: object
+    detail: object
+    channel_trade_no: str
 
 
 @dataclass(frozen=True)
@@ -502,15 +511,51 @@ async def get_user_order(session: AsyncSession, payload: UserOrderGet | dict) ->
 
 
 @audit("order.cancel")
-@transactional
 async def cancel_user_order(session: AsyncSession, payload: UserOrderGet | dict) -> Order:
-    """买家关闭自己的待支付订单。"""
+    """买家关闭自己的待支付订单。本地提交成功后，再关闭 BEpusdt 收银台。"""
+    order, remote = await _cancel_user_order(session, payload)
+    await _close_remote_payment(remote)
+    return order
+
+
+@transactional
+async def _cancel_user_order(
+    session: AsyncSession,
+    payload: UserOrderGet | dict,
+) -> tuple[Order, _RemotePayment | None]:
     data = parse_model(UserOrderGet, payload)
     order = await _pending_order(session, data.order_id)
     if order.user_id != data.user_id:
         raise BizException("订单不存在", code=BizCode.NOT_FOUND)
+    remote = await _remote_payment(session, order)
     await _close_pending(session, order, OrderStatus.CANCELLED)
-    return order
+    return order, remote
+
+
+async def _remote_payment(session: AsyncSession, order: Order) -> _RemotePayment | None:
+    """只带走关闭 BEpusdt 需要的副本。渠道配置读不到时，本地取消仍然继续。"""
+    if order.channel_id is None or order.pay_provider != int(PaymentProvider.BEPUSDT):
+        return None
+    detail_row = await session.get(OrderDetail, order.id)
+    trade_no = None if detail_row is None else detail_row.channel_trade_no
+    if not trade_no:
+        return None
+    try:
+        channel, detail = await get_payment_channel(session, order.channel_id)
+    except BizException:
+        logger.exception("读取支付渠道失败，本地订单仍会取消 order_no=%s", order.order_no)
+        return None
+    copied_channel, copied_detail = copy_payment_party(channel, detail)
+    return _RemotePayment(channel=copied_channel, detail=copied_detail, channel_trade_no=trade_no)
+
+
+async def _close_remote_payment(remote: _RemotePayment | None) -> None:
+    if remote is None:
+        return
+    try:
+        await run_blocking(close_remote_payment, remote.channel, remote.detail, remote.channel_trade_no)
+    except Exception:
+        logger.exception("关闭远程支付订单失败 trade_id=%s", remote.channel_trade_no)
 
 
 @transactional
