@@ -1,0 +1,32 @@
+name: Feature request
+description: A small feature or experience improvement. Use the product proposal template for a larger change.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is awkward, missing, or easy to get wrong? Describe one real situation.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: The smallest change that solves the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this change will explicitly leave undone.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable checks that show the work is done. Use concrete examples.
+    validations:
+      required: true

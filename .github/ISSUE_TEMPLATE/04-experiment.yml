@@ -1,0 +1,37 @@
+name: Experiment
+description: A bounded technical check that answers one specific question.
+title: "[Experiment]: "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: The question to answer, and which decision it affects.
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: The expected result and why you expect it.
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: Which sample to use, how to measure it, and how many times.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Success and failure criteria
+      description: Which result confirms the approach, and which result means it should be replaced.
+    validations:
+      required: true
+  - type: input
+    id: timebox
+    attributes:
+      label: Timebox
+      description: The maximum time to spend.

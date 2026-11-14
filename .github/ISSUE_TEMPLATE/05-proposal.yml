@@ -1,0 +1,64 @@
+name: Product proposal
+description: A larger change. Write down what it includes and what it leaves out, agree on it, then split it into tasks.
+title: "[Proposal]: "
+labels:
+  - proposal
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One proposal settles one design point. For each important decision, list the options, the choice, and the reason. After it is accepted, the proposal is read-only. Open a new proposal for later changes.
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation and user stories
+      description: Which real situations triggered this, and the one sentence they have in common.
+    validations:
+      required: true
+  - type: textarea
+    id: users
+    attributes:
+      label: Target users
+      description: Who this is for.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current approach and gaps
+      description: How people handle this today, and what is still manual or redundant. Write "None" if there is no current approach.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: What this round will do, and an explicit list of what it will not do.
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Key decisions
+      description: The core rules or approach. List the options, the choice, and why, including alternatives.
+    validations:
+      required: true
+  - type: textarea
+    id: concepts
+    attributes:
+      label: Core concepts and information structure
+      description: How the main concepts are defined and how the data is organized. This is input for the design.
+    validations:
+      required: true
+  - type: textarea
+    id: prototype
+    attributes:
+      label: Prototype
+      description: For a change with a user interface, add a prototype or an interactive link after the text is settled.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What done looks like. Use concrete examples that can be checked.
+    validations:
+      required: true
