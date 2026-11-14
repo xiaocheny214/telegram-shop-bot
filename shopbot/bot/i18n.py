@@ -74,6 +74,11 @@ _ERRORS = {
     "订单不在待发货": "This order is not waiting for delivery",
     "消息过长": "The message is too long",
     "请稍后再试": "Please try again later",
+    "店名必须是文本": "Shop name must be text",
+    "店名不能超过 64 个字符": "Shop name must be 64 characters or fewer",
+    "店名包含非法字符": "Shop name contains an invalid character",
+    "分类图标不能超过 16 个字符": "Category icon must be 16 characters or fewer",
+    "分类图标包含非法字符": "Category icon contains an invalid character",
 }
 
 

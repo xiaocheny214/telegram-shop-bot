@@ -11,6 +11,7 @@ _TIMEOUT_MIN = 60
 _TIMEOUT_MAX = 86_400
 _PENDING_MAX = 100
 _THANKS_MAX = 1_000
+_NAME_MAX = 64
 _RATE_MAX = 100_000_000
 
 
@@ -26,6 +27,7 @@ class ShopSettingUpdate(BaseModel):
     usdt_cny_cents: int | None = None
     gbp_cny_cents: int | None = None
     eur_cny_cents: int | None = None
+    display_name: str | None = None
 
     @field_validator("order_timeout_seconds")
     @classmethod
@@ -61,6 +63,24 @@ class ShopSettingUpdate(BaseModel):
             code = ord(char)
             if code == 127 or (code < 32 and char not in "\n\r\t"):
                 raise ValueError("感谢语包含非法字符")
+        return text
+
+    @field_validator("display_name")
+    @classmethod
+    def check_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("店名必须是文本")
+        text = value.strip()
+        if not text:
+            return None
+        if len(text) > _NAME_MAX:
+            raise ValueError("店名不能超过 64 个字符")
+        for char in text:
+            code = ord(char)
+            if code == 127 or code < 32:
+                raise ValueError("店名包含非法字符")
         return text
 
     @field_validator("usd_cny_cents", "usdt_cny_cents", "gbp_cny_cents", "eur_cny_cents")

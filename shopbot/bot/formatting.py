@@ -93,6 +93,14 @@ def shelf(title: str, meta: str) -> str:
     return f"{bold(title)}\n{esc(meta)}"
 
 
+def marked(icon: str | None, name: str) -> str:
+    """分类图标和名称。没有图标时只留名称。"""
+    badge = (icon or "").strip()
+    if not badge:
+        return name
+    return f"{badge} {name}"
+
+
 def facts(*pairs: tuple[str, str]) -> str:
     return "\n".join(f"{bold(label)}  {esc(value)}" for label, value in pairs)
 

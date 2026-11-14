@@ -42,6 +42,7 @@ class ShopSetting(Base):
     usdt_cny_cents: Mapped[int] = mapped_column(default=0, server_default=text("0"))  # 1 USDT 兑换的人民币分。0 表示未配置
     gbp_cny_cents: Mapped[int] = mapped_column(default=0, server_default=text("0"))  # 1 英镑兑换的人民币分。0 表示未配置
     eur_cny_cents: Mapped[int] = mapped_column(default=0, server_default=text("0"))  # 1 欧元兑换的人民币分。0 表示未配置
+    display_name: Mapped[str | None] = mapped_column(String(64))  # 买家首页欢迎语里的店名，可空
 
 
 class User(Base):
@@ -101,6 +102,7 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(128))
+    icon: Mapped[str | None] = mapped_column(String(16))  # 分类按钮上的 emoji，可空
     sort_order: Mapped[int] = mapped_column(default=0)
     is_active: Mapped[bool] = mapped_column(default=True)
 

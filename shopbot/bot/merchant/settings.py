@@ -18,6 +18,7 @@ _PROMPTS = {
     "usdt": ("请发送 1 USDT 折合的人民币，例如 7.25。发送 0 表示未配置。", "Send how many CNY equal 1 USDT, for example 7.25. Send 0 if unset."),
     "gbp": ("请发送 1 英镑折合的人民币，例如 9.20。发送 0 表示未配置。", "Send how many CNY equal 1 GBP, for example 9.20. Send 0 if unset."),
     "eur": ("请发送 1 欧元折合的人民币，例如 7.80。发送 0 表示未配置。", "Send how many CNY equal 1 EUR, for example 7.80. Send 0 if unset."),
+    "name": ("请发送店名，最多 64 个字符。发送 - 清空。", "Send the shop name, up to 64 characters. Send - to clear it."),
 }
 _FIELDS = {
     "timeout": "order_timeout_seconds",
@@ -27,6 +28,7 @@ _FIELDS = {
     "usdt": "usdt_cny_cents",
     "gbp": "gbp_cny_cents",
     "eur": "eur_cny_cents",
+    "name": "display_name",
 }
 
 
@@ -34,9 +36,11 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     async with merchant_session(update, context) as session:
         setting = await get_shop_setting(session)
         thanks = setting.thank_you_message or say("（空）", "(empty)")
+        shop_name = setting.display_name or say("（空）", "(empty)")
         text = blocks(
             bold(say("店铺设置", "Shop settings")),
             facts(
+                (say("店名", "Shop name"), shop_name),
                 (say("订单超时", "Order timeout"), say("{seconds} 秒", "{seconds} seconds", seconds=setting.order_timeout_seconds)),
                 (say("待支付上限", "Pending limit"), str(setting.max_pending_orders)),
                 (say("感谢语", "Thank-you"), thanks),
@@ -47,6 +51,7 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             ),
         )
     buttons = [
+        [InlineKeyboardButton(say("店名", "Shop name"), callback_data="ut:name")],
         [
             InlineKeyboardButton(say("超时", "Timeout"), callback_data="ut:timeout"),
             InlineKeyboardButton(say("待支付上限", "Pending limit"), callback_data="ut:pending"),
@@ -67,7 +72,7 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def settings_conversation() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CallbackQueryHandler(_begin, pattern=r"^ut:(timeout|pending|thanks|usd|usdt|gbp|eur)$")],
+        entry_points=[CallbackQueryHandler(_begin, pattern=r"^ut:(timeout|pending|thanks|usd|usdt|gbp|eur|name)$")],
         states={ASK_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, _save)]},
         fallbacks=[
             CommandHandler("cancel", _abort),
@@ -117,7 +122,7 @@ def _parse(key: str, text: str):
         return parse_int(text, 60, 86_400, "订单超时必须在 60 到 86400 秒之间")
     if key == "pending":
         return parse_int(text, 1, 100, "待支付上限必须在 1 到 100 之间")
-    if key == "thanks":
+    if key in {"thanks", "name"}:
         raw = text.strip()
         return None if raw == "-" else raw
     return parse_cents(text, allow_zero=True)

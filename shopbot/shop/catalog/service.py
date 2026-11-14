@@ -21,6 +21,7 @@ async def create_category(session: AsyncSession, payload: CategoryCreate | dict)
     data = parse_model(CategoryCreate, payload)
     category = Category(
         name=await _available_name(session, data.name),
+        icon=data.icon,
         sort_order=data.sort_order,
         is_active=data.is_active,
     )
@@ -51,6 +52,8 @@ async def update_category(session: AsyncSession, category_id: int, payload: Cate
     category = await get_category(session, category_id)
     if data.name is not None:
         category.name = await _available_name(session, data.name, exclude_id=category.id)
+    if "icon" in data.model_fields_set:
+        category.icon = data.icon
     if data.sort_order is not None:
         category.sort_order = data.sort_order
     if data.is_active is not None:

@@ -49,5 +49,7 @@ async def update_shop_setting(session: AsyncSession, payload: ShopSettingUpdate 
         setting.gbp_cny_cents = data.gbp_cny_cents
     if "eur_cny_cents" in data.model_fields_set and data.eur_cny_cents is not None:
         setting.eur_cny_cents = data.eur_cny_cents
+    if "display_name" in data.model_fields_set:
+        setting.display_name = data.display_name
     await session.flush()
     return setting

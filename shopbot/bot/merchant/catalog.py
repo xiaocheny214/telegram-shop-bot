@@ -3,10 +3,11 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
-from shopbot.bot.formatting import active_label, blocks, bold, button_label, esc, facts, page_slice, parse_int, shelf
+from shopbot.bot.formatting import active_label, blocks, bold, button_label, esc, facts, marked, page_slice, parse_int, shelf
 from shopbot.bot.i18n import say, tr
 from shopbot.bot.ui import callback_int, guarded, merchant_menu, merchant_session, pager, remind, show
 from shopbot.framework.exceptions.biz import BizException
+from shopbot.shop.catalog.schemas import CategoryCreate, parse_model
 from shopbot.shop.catalog.service import (
     create_category,
     delete_category,
@@ -15,7 +16,7 @@ from shopbot.shop.catalog.service import (
     update_category,
 )
 
-ASK_TEXT = 1
+ASK_TEXT, ASK_ICON = range(2)
 
 
 @guarded("bot:merchant")
@@ -50,7 +51,7 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE, pa
             for category in chunk:
                 cards.append(
                     shelf(
-                        category.name,
+                        marked(category.icon, category.name),
                         say(
                             "{state} · 排序 {order}",
                             "{state} · sort {order}",
@@ -59,7 +60,9 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE, pa
                         ),
                     )
                 )
-                buttons.append([InlineKeyboardButton(button_label(category.name), callback_data=f"cv:{category.id}")])
+                buttons.append(
+                    [InlineKeyboardButton(button_label(marked(category.icon, category.name)), callback_data=f"cv:{category.id}")]
+                )
             text = blocks(bold(say("分类", "Categories")), *cards)
         extra = pager("cg", page, has_more)
         if extra:
@@ -73,26 +76,30 @@ async def _open(update: Update, context: ContextTypes.DEFAULT_TYPE, category_id:
     async with merchant_session(update, context) as session:
         category = await get_category(session, category_id)
         name = category.name
+        raw_icon = category.icon
+        icon = raw_icon or say("（空）", "(empty)")
         active = category.is_active
         sort_order = category.sort_order
     markup = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(say("改名", "Rename"), callback_data=f"cr:{category_id}"),
-                InlineKeyboardButton(say("排序", "Sort"), callback_data=f"cs:{category_id}"),
+                InlineKeyboardButton(say("图标", "Icon"), callback_data=f"ci:{category_id}"),
             ],
             [
+                InlineKeyboardButton(say("排序", "Sort"), callback_data=f"cs:{category_id}"),
                 InlineKeyboardButton(active_label(not active), callback_data=f"ct:{category_id}"),
-                InlineKeyboardButton(say("删除", "Delete"), callback_data=f"cd:{category_id}"),
             ],
+            [InlineKeyboardButton(say("删除", "Delete"), callback_data=f"cd:{category_id}")],
             [InlineKeyboardButton(say("返回分类", "Categories"), callback_data="cg:1")],
         ]
     )
     await show(
         update,
         blocks(
-            bold(name),
+            bold(marked(raw_icon, name)),
             facts(
+                (say("图标", "Icon"), icon),
                 (say("状态", "Status"), active_label(active)),
                 (say("排序", "Sort"), str(sort_order)),
             ),
@@ -136,8 +143,11 @@ async def _delete(update: Update, context: ContextTypes.DEFAULT_TYPE, category_i
 
 def category_conversation() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CallbackQueryHandler(_begin, pattern=r"^(cn|cr:\d+|cs:\d+)$")],
-        states={ASK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, _text)]},
+        entry_points=[CallbackQueryHandler(_begin, pattern=r"^(cn|cr:\d+|cs:\d+|ci:\d+)$")],
+        states={
+            ASK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, _text)],
+            ASK_ICON: [MessageHandler(filters.TEXT & ~filters.COMMAND, _icon)],
+        },
         fallbacks=[
             CommandHandler("cancel", _abort),
             CommandHandler("start", _abort),
@@ -149,6 +159,9 @@ def category_conversation() -> ConversationHandler:
     )
 
 
+_ICON_PROMPT = ("请发送分类图标，一个 emoji。发送 - 表示不设置。", "Send one emoji for the category. Send - to leave it blank.")
+
+
 @guarded("bot:merchant")
 async def _begin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -157,6 +170,10 @@ async def _begin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["category_form"] = {"action": "create"}
         await show(update, say("请发送分类名称。发送 /cancel 返回。", "Send the category name. Send /cancel to go back."))
         return ASK_TEXT
+    if query.data.startswith("ci:"):
+        context.user_data["category_form"] = {"action": "icon", "category_id": callback_int(query.data, 1)}
+        await show(update, say(*_ICON_PROMPT))
+        return ASK_ICON
     action = "rename" if query.data.startswith("cr:") else "sort"
     context.user_data["category_form"] = {"action": action, "category_id": callback_int(query.data, 1)}
     prompt = (
@@ -174,11 +191,18 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not isinstance(form, dict) or message is None or message.text is None:
         return await _abort(update, context)
+    if form["action"] == "create":
+        try:
+            parsed = parse_model(CategoryCreate, {"name": message.text, "sort_order": 0, "is_active": True})
+        except BizException as exc:
+            await show(update, esc(tr(exc.message)))
+            return ASK_TEXT
+        form["name"] = parsed.name
+        await show(update, say(*_ICON_PROMPT))
+        return ASK_ICON
     try:
         async with merchant_session(update, context) as session:
-            if form["action"] == "create":
-                await create_category(session, {"name": message.text, "sort_order": 0, "is_active": True})
-            elif form["action"] == "rename":
+            if form["action"] == "rename":
                 await update_category(session, int(form["category_id"]), {"name": message.text})
             else:
                 sort_order = parse_int(message.text, 0, 10_000, "排序超出范围")
@@ -186,6 +210,28 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except BizException as exc:
         await show(update, esc(tr(exc.message)))
         return ASK_TEXT
+    context.user_data.pop("category_form", None)
+    await show_categories(update, context, 1)
+    return ConversationHandler.END
+
+
+@guarded("bot:merchant")
+async def _icon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    form = context.user_data.get("category_form")
+    message = update.effective_message
+    if not isinstance(form, dict) or message is None or message.text is None:
+        return await _abort(update, context)
+    raw = message.text.strip()
+    icon = None if raw == "-" else raw
+    try:
+        async with merchant_session(update, context) as session:
+            if form["action"] == "create":
+                await create_category(session, {"name": form["name"], "icon": icon, "sort_order": 0, "is_active": True})
+            else:
+                await update_category(session, int(form["category_id"]), {"icon": icon})
+    except BizException as exc:
+        await show(update, esc(tr(exc.message)))
+        return ASK_ICON
     context.user_data.pop("category_form", None)
     await show_categories(update, context, 1)
     return ConversationHandler.END
