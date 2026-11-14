@@ -40,7 +40,10 @@ def buyer_menu() -> InlineKeyboardMarkup:
 
 
 def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
-    """输入框上方的常驻快捷键。点下去等于发出按钮上的文字。"""
+    """输入框上方的快捷键。点下去等于发出按钮上的文字。
+
+    不保持常驻。点进输入框时由输入法盖住；收起后，客户端在输入框旁显示键盘图标，用来再打开它。
+    """
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(say("选购", "Shop")), KeyboardButton(say("钱包", "Wallet"))],
@@ -48,7 +51,7 @@ def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(say("语言", "Language"))],
         ],
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,
     )
 
 
