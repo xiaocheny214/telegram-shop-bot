@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, SessionTransactionOrigin
 
@@ -85,4 +85,22 @@ async def init_db(config: DatabaseConfig) -> AsyncEngine:
     engine = create_engine(config)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(_ensure_columns)
     return engine
+
+
+# create_all 不会给已经存在的表加列。这两列是展示用的，旧库启动时补上。
+_ADDED_COLUMNS = (
+    ("shop_settings", "display_name", "VARCHAR(64)"),
+    ("categories", "icon", "VARCHAR(16)"),
+)
+
+
+def _ensure_columns(connection) -> None:
+    for table, column, column_type in _ADDED_COLUMNS:
+        rows = connection.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        if not rows:
+            continue
+        names = {row[1] for row in rows}
+        if column not in names:
+            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))

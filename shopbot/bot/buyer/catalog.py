@@ -15,6 +15,7 @@ from shopbot.bot.formatting import (
     facts,
     format_cents,
     format_time,
+    marked,
     network_label,
     page_slice,
     parse_quantity,
@@ -23,10 +24,10 @@ from shopbot.bot.formatting import (
 )
 from shopbot.bot.i18n import say, tr
 from shopbot.bot.identity import open_buyer
-from shopbot.bot.ui import buyer_id, buyer_menu, callback_int, guarded, pager, pair, remind, session_factory, show
+from shopbot.bot.ui import buyer_id, buyer_menu, callback_int, guarded, pager, pair, remind, rows_of, session_factory, show, show_cover
 from shopbot.framework.enums.model import PaymentProvider, UsdtNetwork
 from shopbot.framework.exceptions.biz import BizException
-from shopbot.shop.catalog.service import list_categories
+from shopbot.shop.catalog.service import get_category, list_categories
 from shopbot.shop.order.service import place_order, pay_by_wallet
 from shopbot.shop.product.service import get_product, list_products, list_specs
 from shopbot.system.payment.service import list_payment_channels
@@ -60,13 +61,16 @@ async def _categories(update: Update, context: ContextTypes.DEFAULT_TYPE, page: 
         await open_buyer(session, user.id, user.username)
         categories = await list_categories(session, active_only=True)
         chunk, has_more = page_slice(categories, page, _PAGE)
-        rows: list[list[InlineKeyboardButton]] = []
+        buttons: list[InlineKeyboardButton] = []
         if not categories:
             text = blocks(bold(say("选购", "Shop")), esc(say("现在没有在售分类。", "Nothing is on sale.")))
         else:
-            text = blocks(bold(say("选购", "Shop")), esc(say("选择一个分类。", "Choose a category.")))
+            text = blocks(bold(say("选购", "Shop")), esc(say("请选择分类。", "Choose a category.")))
         for category in chunk:
-            rows.append([InlineKeyboardButton(button_label(category.name), callback_data=f"g:{category.id}:1")])
+            buttons.append(
+                InlineKeyboardButton(button_label(marked(category.icon, category.name)), callback_data=f"g:{category.id}:1")
+            )
+        rows = rows_of(buttons, 3)
         extra = pager("c", page, has_more)
         if extra:
             rows.append(extra)
@@ -80,16 +84,22 @@ async def _products(update: Update, context: ContextTypes.DEFAULT_TYPE, category
     async with session_factory(context)() as session:
         await open_buyer(session, user.id, user.username)
         products = await list_products(session, category_id=category_id, active_only=True)
+        category = await get_category(session, category_id)
+        icon = category.icon
         chunk, has_more = page_slice(products, page, _PAGE)
         rows: list[list[InlineKeyboardButton]] = []
         cards: list[str] = []
         if not products:
-            text = blocks(bold(say("商品", "Products")), esc(say("这个分类里没有在售商品。", "This category has no products on sale.")))
+            text = blocks(
+                bold(marked(icon, category.name)),
+                esc(say("这个分类里没有在售商品。", "This category has no products on sale.")),
+            )
         else:
             for product in chunk:
+                title = marked(icon, product.name)
                 cards.append(
                     shelf(
-                        product.name,
+                        title,
                         say(
                             "{price} · 库存 {stock}",
                             "{price} · stock {stock}",
@@ -98,8 +108,12 @@ async def _products(update: Update, context: ContextTypes.DEFAULT_TYPE, category
                         ),
                     )
                 )
-                rows.append([InlineKeyboardButton(button_label(product.name), callback_data=f"d:{product.id}")])
-            text = blocks(bold(say("商品", "Products")), *cards)
+                rows.append([InlineKeyboardButton(button_label(title), callback_data=f"d:{product.id}")])
+            text = blocks(
+                bold(marked(icon, category.name)),
+                esc(say("请选择商品。", "Choose a product.")),
+                *cards,
+            )
         extra = pager(f"g:{category_id}", page, has_more)
         if extra:
             rows.append(extra)
@@ -116,13 +130,16 @@ async def _detail(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id
         if not product.is_active:
             await show(update, say("商品已下架。", "This product is unavailable."), buyer_menu())
             return
+        category = await get_category(session, product.category_id)
         specs = [spec for spec in await list_specs(session, product.id, active_only=True)]
         description = detail.description.strip()
+        cover = product.cover_url
         parts = [
-            bold(product.name),
+            bold(marked(category.icon, product.name)),
             facts(
                 (say("价格", "Price"), format_cents(product.price_cents, product.currency)),
                 (say("库存", "Stock"), str(product.stock)),
+                (say("已售", "Sold"), str(product.sold_count)),
                 (say("发货", "Delivery"), delivery_label(product.delivery_method)),
             ),
         ]
@@ -142,7 +159,12 @@ async def _detail(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id
         else:
             rows.append([InlineKeyboardButton(say("购买", "Buy"), callback_data=f"s:{product.id}:0")])
         rows.append([InlineKeyboardButton(say("返回商品", "Products"), callback_data=f"g:{product.category_id}:1")])
-    await show(update, blocks(*parts), InlineKeyboardMarkup(rows))
+    body = blocks(*parts)
+    markup = InlineKeyboardMarkup(rows)
+    if cover:
+        await show_cover(update, body, cover, markup)
+        return
+    await show(update, body, markup)
 
 
 def checkout_conversation() -> ConversationHandler:

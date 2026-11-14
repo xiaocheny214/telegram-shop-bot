@@ -8,6 +8,7 @@ from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.exceptions.biz import BizException
 
 _NAME_MAX = 128
+_ICON_MAX = 16
 _SORT_MAX = 10_000
 
 
@@ -15,6 +16,7 @@ class CategoryCreate(BaseModel):
     model_config = ConfigDict(strict=True)
 
     name: str
+    icon: str | None = None
     sort_order: int = 0
     is_active: bool = True
 
@@ -22,6 +24,11 @@ class CategoryCreate(BaseModel):
     @classmethod
     def check_name(cls, value: str) -> str:
         return _name(value)
+
+    @field_validator("icon")
+    @classmethod
+    def check_icon(cls, value: str | None) -> str | None:
+        return _icon(value)
 
     @field_validator("sort_order")
     @classmethod
@@ -38,6 +45,7 @@ class CategoryUpdate(BaseModel):
     model_config = ConfigDict(strict=True)
 
     name: str | None = None
+    icon: str | None = None
     sort_order: int | None = None
     is_active: bool | None = None
 
@@ -47,6 +55,11 @@ class CategoryUpdate(BaseModel):
         if value is None:
             return None
         return _name(value)
+
+    @field_validator("icon")
+    @classmethod
+    def check_icon(cls, value: str | None) -> str | None:
+        return _icon(value)
 
     @field_validator("sort_order")
     @classmethod
@@ -64,7 +77,7 @@ class CategoryUpdate(BaseModel):
 
     @model_validator(mode="after")
     def has_change(self) -> "CategoryUpdate":
-        if self.name is None and self.sort_order is None and self.is_active is None:
+        if not self.model_fields_set:
             raise ValueError("没有要修改的内容")
         return self
 
@@ -82,6 +95,21 @@ def parse_model[ModelT: BaseModel](model: type[ModelT], value: ModelT | dict[str
         return model.model_validate(value)
     except ValidationError as exc:
         raise BizException(_message(exc), code=BizCode.BAD_REQUEST) from exc
+
+
+def _icon(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("分类图标包含非法字符")
+    icon = value.strip()
+    if not icon:
+        return None
+    if len(icon) > _ICON_MAX:
+        raise ValueError("分类图标不能超过 16 个字符")
+    if any(ord(char) < 32 or ord(char) == 127 for char in icon):
+        raise ValueError("分类图标包含非法字符")
+    return icon
 
 
 def _name(value: str) -> str:

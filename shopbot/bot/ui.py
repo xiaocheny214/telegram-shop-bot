@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Any
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes, ConversationHandler
 
@@ -28,14 +28,27 @@ def buyer_menu() -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(say("选购", "Shop"), callback_data="m:shop"),
-                InlineKeyboardButton(say("订单", "Orders"), callback_data="m:orders"),
+                InlineKeyboardButton(say("钱包", "Wallet"), callback_data="m:wallet"),
             ],
             [
-                InlineKeyboardButton(say("钱包", "Wallet"), callback_data="m:wallet"),
+                InlineKeyboardButton(say("订单", "Orders"), callback_data="m:orders"),
                 InlineKeyboardButton(say("充值", "Top up"), callback_data="m:recharge"),
             ],
             [InlineKeyboardButton(say("语言", "Language"), callback_data="m:lang")],
         ]
+    )
+
+
+def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
+    """输入框上方的常驻快捷键。点下去等于发出按钮上的文字。"""
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton(say("选购", "Shop")), KeyboardButton(say("钱包", "Wallet"))],
+            [KeyboardButton(say("订单", "Orders")), KeyboardButton(say("充值", "Top up"))],
+            [KeyboardButton(say("语言", "Language"))],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
     )
 
 
@@ -61,7 +74,11 @@ def merchant_menu() -> InlineKeyboardMarkup:
 
 
 def pair(buttons: list[InlineKeyboardButton]) -> list[list[InlineKeyboardButton]]:
-    return [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    return rows_of(buttons, 2)
+
+
+def rows_of(buttons: list[InlineKeyboardButton], width: int) -> list[list[InlineKeyboardButton]]:
+    return [buttons[i : i + width] for i in range(0, len(buttons), width)]
 
 
 def pager(prefix: str, page: int, has_more: bool) -> list[InlineKeyboardButton]:
@@ -125,6 +142,52 @@ async def show(update: Update, text: str, markup: InlineKeyboardMarkup | None = 
     await _send(update, clip_html(text), markup)
 
 
+_CAPTION_LIMIT = 1000
+
+
+async def show_cover(update: Update, text: str, url: str, markup: InlineKeyboardMarkup | None = None) -> None:
+    """详情有封面时发图片。文字消息改不成图片，所以另发一条，再删掉原来的文字。"""
+    caption = clip_html(text, _CAPTION_LIMIT)
+    query = update.callback_query
+    if query is not None:
+        await _answer(query)
+    if query is not None and query.message is not None and query.message.photo:
+        try:
+            await _call(query.edit_message_caption, caption=caption, reply_markup=markup, parse_mode="HTML")
+            return
+        except BadRequest as exc:
+            if "not modified" in str(exc).lower():
+                return
+    message = update.effective_message
+    if message is None:
+        return
+    try:
+        await _call(message.reply_photo, url, caption=caption, reply_markup=markup, parse_mode="HTML")
+    except BadRequest:
+        await _send(update, caption, markup)
+        return
+    if query is not None and query.message is not None and not query.message.photo:
+        try:
+            await query.message.delete()
+        except BadRequest:
+            return
+
+
+async def install_reply_keyboard(update: Update) -> None:
+    """回复键盘和内联按钮不能挂在同一条消息上。发出后立刻删掉，键盘会留在输入框上方。"""
+    message = update.effective_message
+    if message is None:
+        return
+    try:
+        sent = await message.reply_text("\u2060", reply_markup=buyer_reply_keyboard())
+    except (BadRequest, NetworkError, TimedOut):
+        return
+    try:
+        await sent.delete()
+    except BadRequest:
+        return
+
+
 async def tell(update: Update, text: str) -> None:
     """业务异常按当前语言显示。正文来自异常原文，先转义再发出，避免把尖括号当成排版。"""
     await show(update, esc(tr(text)))
@@ -183,12 +246,24 @@ async def _send(update: Update, text: str, markup: InlineKeyboardMarkup | None) 
             await _call(query.edit_message_text, text, reply_markup=markup, parse_mode="HTML")
             return
         except BadRequest as exc:
-            if "not modified" in str(exc).lower():
+            lowered = str(exc).lower()
+            if "not modified" in lowered:
                 return
-            if "parse" in str(exc).lower():
+            if "parse" in lowered:
                 text = esc(text)
+                try:
+                    await _call(query.edit_message_text, text, reply_markup=markup, parse_mode="HTML")
+                    return
+                except BadRequest as again:
+                    if "not modified" in str(again).lower():
+                        return
         if query.message is not None:
             await _call(query.message.reply_text, text, reply_markup=markup, parse_mode="HTML")
+            if query.message.photo:
+                try:
+                    await query.message.delete()
+                except BadRequest:
+                    return
             return
     message = update.effective_message
     if message is not None:
