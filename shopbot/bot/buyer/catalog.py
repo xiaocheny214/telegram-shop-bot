@@ -39,7 +39,10 @@ _PAGE = 5
 async def browse(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = "" if query is None else query.data or ""
-    if data in {"m:home", "m:shop", ""} or data.startswith("c:"):
+    if data == "m:home":
+        await start(update, context)
+        return
+    if data in {"m:shop", ""} or data.startswith("c:"):
         page = 1 if not data.startswith("c:") else callback_int(data, 1)
         await _categories(update, context, page)
         return
