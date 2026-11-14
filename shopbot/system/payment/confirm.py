@@ -1,7 +1,7 @@
 """支付回调的两次核对。
 
 先用渠道密钥验签，再向渠道查单。两次都通过，并且订单号和金额与本地下单时一致，才算支付成功。
-只信回调正文会被伪造通知刷走卡密。
+BEpusdt 的查单是 POST /api/v1/pay/info。只信回调正文会被伪造通知刷走卡密。
 """
 
 import json
@@ -62,7 +62,7 @@ def confirm_callback(
     if provider is PaymentProvider.WECHAT:
         return _wechat(keys, data or {}, opener)
     if provider is PaymentProvider.BEPUSDT:
-        return _bepusdt(keys, data or {})
+        return _bepusdt(keys, data or {}, opener)
     raise BizException("支付渠道无效", code=BizCode.BAD_REQUEST)
 
 
@@ -147,8 +147,8 @@ def _wechat(keys: ChannelKeys, data: dict, opener: Opener) -> VerifiedPayment:
     )
 
 
-def _bepusdt(keys: ChannelKeys, data: dict) -> VerifiedPayment:
-    from shopbot.framework.client.payments import create_client
+def _bepusdt(keys: ChannelKeys, data: dict, opener: Opener) -> VerifiedPayment:
+    from shopbot.framework.client.payments import create_client, trade_info_request
 
     try:
         if not create_client(keys.api_url, keys.api_token).verify_callback(data):
@@ -157,23 +157,33 @@ def _bepusdt(keys: ChannelKeys, data: dict) -> VerifiedPayment:
             raise BizException("支付未成功", code=BizCode.CONFLICT)
         order_no = _text(data.get("order_id"), "订单号无效")
         trade_no = _text(data.get("trade_id"), "渠道交易号无效")
-        remote = create_client(keys.api_url, keys.api_token).query_order(trade_no)
+        info = _bepusdt_info(_read_json(opener, trade_info_request(keys.api_url, trade_no)))
+        if int(info.get("status", 0)) != 2:
+            raise BizException("支付未确认", code=BizCode.CONFLICT)
+        if _text(info.get("order_id"), "订单号无效") != order_no or _text(info.get("trade_id"), "渠道交易号无效") != trade_no:
+            raise BizException("支付未确认", code=BizCode.CONFLICT)
+        if not _same_money(info.get("actual_amount"), data.get("actual_amount")) or not _same_money(info.get("money"), data.get("amount")):
+            raise BizException("支付金额不符", code=BizCode.CONFLICT)
     except BizException:
         raise
     except Exception as exc:
         raise BizException("支付未确认", code=BizCode.CONFLICT) from exc
-    status = int(remote.status) if remote.status is not None else 0
-    if status != 2 or remote.order_id != order_no or remote.trade_id != trade_no:
-        raise BizException("支付未确认", code=BizCode.CONFLICT)
-    if not _same_money(remote.actual_amount, data.get("actual_amount")) or not _same_money(remote.amount, data.get("amount")):
-        raise BizException("支付金额不符", code=BizCode.CONFLICT)
     return VerifiedPayment(
         order_no=order_no,
         channel_trade_no=trade_no,
         channel_status=2,
-        paid_amount=str(remote.actual_amount),
-        fiat_amount=str(remote.amount),
+        paid_amount=str(info.get("actual_amount")),
+        fiat_amount=str(info.get("money")),
     )
+
+
+def _bepusdt_info(payload: dict) -> dict:
+    if str(payload.get("status_code")) != "200":
+        raise BizException("支付未确认", code=BizCode.CONFLICT)
+    info = payload.get("data")
+    if not isinstance(info, dict):
+        raise BizException("支付未确认", code=BizCode.CONFLICT)
+    return info
 
 
 def _alipay_query_params(keys: ChannelKeys, order_no: str) -> dict[str, str]:
