@@ -5,8 +5,8 @@ trade_id 写入 channel_trade_no，actual_amount 写入 pay_amount，
 token 收款地址写入 pay_target，payment_url 写入 pay_url。
 请求里的 trade_type 由 UsdtNetwork 转成 usdt.trc20、usdt.erc20、usdt.solana、usdt.polygon。
 amount 是法币金额，买家实付以 actual_amount 为准。
-verify_callback 只证明签名来自该网关。状态 2 才是支付成功，
-还要核对本地订单号和金额，并且同一个订单只履约一次。
+verify_callback 只证明签名来自该网关。状态 2 才是支付成功。
+入账前再读 POST /api/v1/pay/info，核对订单号和金额，并且同一个订单只履约一次。
 
 支付宝、微信、易支付和 BEpusdt 都收成这四项。
 前三个没有 USDT 网络，订单的 pay_network 留空。
