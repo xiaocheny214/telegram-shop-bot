@@ -1,5 +1,5 @@
 name: Bug report
-description: 报告缺陷、回归或与预期不符的行为。
+description: Report a defect, regression, or behavior that does not match the expected result.
 title: "[Bug]: "
 labels:
   - bug
@@ -8,29 +8,29 @@ body:
     id: behavior
     attributes:
       label: Current behavior
-      description: 实际发生了什么。附上操作、错误信息或日志片段。
+      description: What actually happened. Include the action, error message, or a log snippet.
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: Expected behavior
-      description: 应该发生什么。
+      description: What should have happened.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      description: 从打开机器人或运行命令开始，按顺序写出复现步骤。
+      description: Start from opening the bot or running a command, and list the steps in order.
       placeholder: |
-        1. 在买家或商家机器人里打开 ...
-        2. 选择 ...
-        3. 看到 ...
+        1. Open the buyer or merchant bot and go to ...
+        2. Choose ...
+        3. See ...
     validations:
       required: true
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: 版本号或 commit、部署环境（本地 Docker 或远程）、买家或商家机器人、支付渠道。
+      description: Version or commit, where it runs (local Docker or the remote server), buyer or merchant bot, and the payment channel.

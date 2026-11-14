@@ -1,5 +1,5 @@
 name: Documentation
-description: 新增、更正或重写用户文档与协作规范。
+description: Add, correct, or rewrite user documentation or collaboration guidelines.
 title: "[Docs]: "
 labels:
   - documentation
@@ -8,25 +8,25 @@ body:
     id: background
     attributes:
       label: Background
-      description: 哪份文档缺了、错了或过时了，读者因此遇到什么问题。
+      description: Which document is missing, wrong, or outdated, and what problem that causes for the reader.
     validations:
       required: true
   - type: textarea
     id: goal
     attributes:
       label: Goal
-      description: 改完之后文档要讲清什么。
+      description: What the document should make clear after the change.
     validations:
       required: true
   - type: textarea
     id: out-of-scope
     attributes:
       label: Out of scope
-      description: 这次明确不改的部分。
+      description: What this change will explicitly leave undone.
   - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: 怎样算完成。
+      description: How to tell the work is done.
     validations:
       required: true

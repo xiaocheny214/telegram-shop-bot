@@ -29,7 +29,7 @@ jobs:
             )
             const linked = result.repository.pullRequest.closingIssuesReferences.totalCount
             if (linked === 0) {
-              core.setFailed('PR 没有关联 Issue：请在描述中写 Closes # ，或在右侧 Development 栏关联。')
+              core.setFailed('This pull request is not linked to an issue. Add "Closes #" to the description, or link it in the Development section.')
             } else {
-              core.info('PR 已关联 Issue。')
+              core.info('This pull request is linked to an issue.')
             }

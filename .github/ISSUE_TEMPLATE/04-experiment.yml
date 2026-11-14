@@ -1,37 +1,37 @@
 name: Experiment
-description: 有边界的技术验证，用来回答一个具体问题。
+description: A bounded technical check that answers one specific question.
 title: "[Experiment]: "
 body:
   - type: textarea
     id: question
     attributes:
       label: Question
-      description: 要回答的问题，以及它影响哪个决策。
+      description: The question to answer, and which decision it affects.
     validations:
       required: true
   - type: textarea
     id: hypothesis
     attributes:
       label: Hypothesis
-      description: 预期结果和判断依据。
+      description: The expected result and why you expect it.
     validations:
       required: true
   - type: textarea
     id: method
     attributes:
       label: Method
-      description: 用什么样本、怎么测、测多少次。
+      description: Which sample to use, how to measure it, and how many times.
     validations:
       required: true
   - type: textarea
     id: criteria
     attributes:
       label: Success and failure criteria
-      description: 什么结果算验证通过，什么结果要换方案。
+      description: Which result confirms the approach, and which result means it should be replaced.
     validations:
       required: true
   - type: input
     id: timebox
     attributes:
       label: Timebox
-      description: 最多投入多长时间。
+      description: The maximum time to spend.
