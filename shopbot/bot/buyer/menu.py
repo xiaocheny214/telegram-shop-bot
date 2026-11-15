@@ -20,8 +20,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         setting = await get_shop_setting(session)
         balance = buyer.balance_usdt_cents
         shop_name = setting.display_name
-    await show(update, _home(user, shop_name, balance), buyer_menu())
-    await install_reply_keyboard(update, buyer_reply_keyboard())
+    text = _home(user, shop_name, balance)
+    if update.callback_query is None:
+        await install_reply_keyboard(update, buyer_reply_keyboard(), text)
+        return
+    await show(update, text, buyer_menu())
 
 
 def _home(user, shop_name: str | None, balance: int) -> str:
