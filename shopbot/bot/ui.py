@@ -191,18 +191,14 @@ async def show_cover(update: Update, text: str, url: str, markup: InlineKeyboard
 
 
 async def install_reply_keyboard(update: Update, markup: ReplyKeyboardMarkup) -> None:
-    """回复键盘和内联按钮不能挂在同一条消息上。发出后立刻删掉，键盘会留在输入框上方。"""
+    """回复键盘和内联按钮不能挂在同一条消息上。
+
+    这条消息必须留下。删掉它，客户端会把键盘一起卸掉，输入法盖回来，旁边也不会有图标。
+    """
     message = update.effective_message
     if message is None:
         return
-    try:
-        sent = await message.reply_text("\u2060", reply_markup=markup)
-    except (BadRequest, NetworkError, TimedOut):
-        return
-    try:
-        await sent.delete()
-    except BadRequest:
-        return
+    await _call(message.reply_text, say("请从下方选择", "Choose below"), reply_markup=markup)
 
 
 async def tell(update: Update, text: str) -> None:
