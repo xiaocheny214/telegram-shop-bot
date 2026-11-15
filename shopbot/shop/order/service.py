@@ -3,6 +3,7 @@
 在线待支付订单按用户、状态、过期时间查询，走 ix_orders_user_pending。
 在线待支付订单达到店铺上限时拒绝。上限读商家配置，初始为 3。配置为 3 时，第 4 笔拒绝。
 不存在的用户和超额的用户查询在打开数据库前拒绝。渠道请求在写事务之外，由支付线程池执行。渠道已经建单、本地却失败回滚时，关闭远程订单。买家手动取消待支付订单并提交成功后，同样关闭对应的 BEpusdt 订单。
+买家读取和取消订单时，查询条件同时带上订单 id 和当前买家的 user_id。没有行就报订单不存在，不区分不存在和别人的订单。订单不在待支付只在确认归属之后才返回。支付回调、到期关单和商家关单仍按订单本身查找。
 扣库存由商品上的策略决定。日常策略按购买数量下单即占用，营销策略固定一张并在支付成功后占用。
 下单时读取已配置的支付渠道和购买数量，把收银台地址写入订单详情。状态写成待支付。
 易支付、支付宝、微信按店铺汇率把商品金额折成人民币后再交给渠道。
@@ -490,9 +491,7 @@ async def get_user_order(session: AsyncSession, payload: UserOrderGet | dict) ->
     """读取买家自己的订单。别人的订单号按不存在处理。"""
     data = parse_model(UserOrderGet, payload)
     await get_user(session, data.user_id)
-    order = await session.get(Order, data.order_id)
-    if order is None or order.user_id != data.user_id:
-        raise BizException("订单不存在", code=BizCode.NOT_FOUND)
+    order = await _owned_order(session, data.order_id, data.user_id)
     detail = await session.get(OrderDetail, order.id)
     secret = None
     if detail is not None and detail.secret and order.status in {
@@ -524,11 +523,11 @@ async def _cancel_user_order(
     payload: UserOrderGet | dict,
 ) -> tuple[Order, _RemotePayment | None]:
     data = parse_model(UserOrderGet, payload)
-    order = await _pending_order(session, data.order_id)
-    if order.user_id != data.user_id:
-        raise BizException("订单不存在", code=BizCode.NOT_FOUND)
+    order = await _owned_order(session, data.order_id, data.user_id)
+    if order.status != OrderStatus.PENDING:
+        raise BizException("订单不在待支付", code=BizCode.CONFLICT)
     remote = await _remote_payment(session, order)
-    await _close_pending(session, order, OrderStatus.CANCELLED)
+    await _close_pending(session, order, OrderStatus.CANCELLED, owner_id=data.user_id)
     return order, remote
 
 
@@ -601,13 +600,33 @@ async def _expire_one(session: AsyncSession, order_id: int, now: datetime) -> bo
     return True
 
 
-async def _close_pending(session: AsyncSession, order: Order, status: str) -> None:
+async def _close_pending(
+    session: AsyncSession,
+    order: Order,
+    status: str,
+    *,
+    owner_id: int | None = None,
+) -> None:
     product = await session.get(Product, order.product_id)
     if product is None:
         raise BizException("商品不存在", code=BizCode.NOT_FOUND)
     await stock_strategy(order.stock_deduct_strategy).after_close(session, order)
-    order.status = status
-    await session.flush()
+    if owner_id is None:
+        order.status = status
+        await session.flush()
+        return
+    result = await session.execute(
+        update(Order)
+        .where(
+            Order.id == order.id,
+            Order.user_id == owner_id,
+            Order.status == OrderStatus.PENDING,
+        )
+        .values(status=status)
+    )
+    if result.rowcount != 1:
+        raise BizException("订单状态已变化", code=BizCode.CONFLICT)
+    await session.refresh(order)
 
 
 async def _active_user(session: AsyncSession, user_id: int) -> User:
@@ -682,6 +701,16 @@ async def _reject_when_too_many_pending(
     )
     if online_count is not None and online_count >= limit:
         raise BizException("请关闭订单", code=BizCode.CONFLICT)
+
+
+async def _owned_order(session: AsyncSession, order_id: int, user_id: int) -> Order:
+    """按订单 id 和买家 id 一起查。没有行时不说明这单是否存在。"""
+    order = await session.scalar(
+        select(Order).where(Order.id == parse_order_id(order_id), Order.user_id == user_id)
+    )
+    if order is None:
+        raise BizException("订单不存在", code=BizCode.NOT_FOUND)
+    return order
 
 
 async def _pending_order(session: AsyncSession, order_id: int) -> Order:
