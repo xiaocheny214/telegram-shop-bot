@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from shopbot.bot.formatting import blocks, bold, esc, facts, format_cents
 from shopbot.bot.i18n import say
 from shopbot.bot.identity import open_buyer
-from shopbot.bot.ui import buyer_menu, guarded, install_reply_keyboard, session_factory, show
+from shopbot.bot.ui import buyer_menu, buyer_reply_keyboard, guarded, install_reply_keyboard, session_factory, show
 from shopbot.framework.enums.model import Currency
 from shopbot.shop.setting.service import get_shop_setting
 
@@ -21,7 +21,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance = buyer.balance_usdt_cents
         shop_name = setting.display_name
     await show(update, _home(user, shop_name, balance), buyer_menu())
-    await install_reply_keyboard(update)
+    await install_reply_keyboard(update, buyer_reply_keyboard())
 
 
 def _home(user, shop_name: str | None, balance: int) -> str:

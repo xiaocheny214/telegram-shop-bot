@@ -1,12 +1,13 @@
 """注册商家机器人的命令、会话和按钮。"""
 
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from shopbot.bot.merchant.audit import audit_conversation, audits
 from shopbot.bot.merchant.cards import card_conversation, cards
 from shopbot.bot.merchant.catalog import categories, category_conversation
 from shopbot.bot.language import merchant_language
 from shopbot.bot.merchant.menu import route, start
+from shopbot.bot.merchant.shortcuts import shortcut, shortcut_filter
 from shopbot.bot.merchant.payment import channels, payment_conversation
 from shopbot.bot.merchant.product import description_conversation, product_conversation, products, spec_conversation
 from shopbot.bot.merchant.settings import settings_conversation
@@ -15,6 +16,7 @@ from shopbot.bot.merchant.shipping import shipping
 
 def register_merchant(application: Application) -> None:
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(shortcut_filter() & filters.TEXT & ~filters.COMMAND, shortcut))
     application.add_handler(category_conversation())
     application.add_handler(product_conversation())
     application.add_handler(spec_conversation())

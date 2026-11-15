@@ -5,7 +5,14 @@ from telegram.ext import ContextTypes
 
 from shopbot.bot.formatting import blocks, bold, esc
 from shopbot.bot.i18n import say
-from shopbot.bot.ui import guarded, merchant_menu, merchant_session, show
+from shopbot.bot.ui import (
+    guarded,
+    install_reply_keyboard,
+    merchant_menu,
+    merchant_reply_keyboard,
+    merchant_session,
+    show,
+)
 
 
 @guarded("bot:merchant")
@@ -19,6 +26,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ),
         merchant_menu(),
     )
+    if update.callback_query is None:
+        await install_reply_keyboard(update, merchant_reply_keyboard())
 
 
 @guarded("bot:merchant")
