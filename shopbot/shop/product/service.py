@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shopbot.framework.db import transactional
 from shopbot.framework.enums.biz_code import BizCode
+from shopbot.framework.enums.model import DeliveryMethod, OrderStatus
 from shopbot.framework.exceptions.biz import BizException
 from shopbot.shop.catalog.service import get_category
 from shopbot.shop.models import Card, CardStock, Order, Product, ProductDetail, ProductSpec
@@ -136,14 +137,28 @@ async def update_product(
     return product, detail
 
 
+# 手动发货：待支付、已支付、发货失败都还没发完。过期、取消、已发货不拦截。
+_UNSHIPPED = (OrderStatus.PENDING, OrderStatus.PAID, OrderStatus.FULFILL_FAILED)
+
+
 @audit("product.delete")
 @transactional
 async def delete_product(session: AsyncSession, product_id: int) -> None:
     product, detail = await get_product(session, product_id)
-    if await session.scalar(select(Order.id).where(Order.product_id == product.id)):
-        raise BizException("商品已有订单，不能删除", code=BizCode.CONFLICT)
+    if product.delivery_method == DeliveryMethod.MANUAL and await session.scalar(
+        select(Order.id).where(Order.product_id == product.id, Order.status.in_(_UNSHIPPED))
+    ):
+        raise BizException("商品有未发货的手动订单，不能删除", code=BizCode.CONFLICT)
+    # 自动发货只拦截还在待支付的订单。过期、已支付、已取消不拦截。
+    if product.delivery_method == DeliveryMethod.AUTO and await session.scalar(
+        select(Order.id).where(Order.product_id == product.id, Order.status == OrderStatus.PENDING)
+    ):
+        raise BizException("商品有待支付的自动发货订单，不能删除", code=BizCode.CONFLICT)
     if await session.scalar(select(Card.id).where(Card.product_id == product.id)):
         raise BizException("商品还有卡密，不能删除", code=BizCode.CONFLICT)
+    await session.execute(
+        update(Order).where(Order.product_id == product.id).values(product_id=None, spec_id=None)
+    )
     specs = await session.scalars(select(ProductSpec).where(ProductSpec.product_id == product.id))
     for spec in specs.all():
         await session.delete(spec)

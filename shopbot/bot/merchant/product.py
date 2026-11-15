@@ -168,7 +168,7 @@ async def _ask_delete(update: Update, context: ContextTypes.DEFAULT_TYPE, produc
             [InlineKeyboardButton(say("返回", "Back"), callback_data=f"pv:{product_id}")],
         ]
     )
-    await show(update, blocks(bold(say("删除商品", "Delete product")), esc(say("已有订单或卡密时会拒绝。", "It is refused when orders or cards remain."))), markup)
+    await show(update, blocks(bold(say("删除商品", "Delete product")), esc(say("有未发货的手动订单、待支付的自动发货订单或卡密时会拒绝。", "It is refused when an unshipped manual order, an unpaid automatic order, or cards remain."))), markup)
 
 
 async def _delete(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int) -> None:
