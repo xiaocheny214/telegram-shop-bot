@@ -227,7 +227,7 @@ class Order(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)  # 雪花算法生成，不使用数据库自增
     order_no: Mapped[str] = mapped_column(String(64), unique=True)  # 与主键相同的十进制订单号，交给支付渠道
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))  # 订单归属
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"))  # 商品删除后清空，订单仍保留名称快照
     spec_id: Mapped[int | None] = mapped_column(ForeignKey("product_specs.id"))
     channel_id: Mapped[int | None] = mapped_column(ForeignKey("payment_channels.id"))  # 渠道下单时写入。钱包扣款为空
     product_name: Mapped[str] = mapped_column(String(128))  # 下单时的商品名称
