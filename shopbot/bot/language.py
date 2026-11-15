@@ -6,7 +6,16 @@ from telegram.ext import ContextTypes
 from shopbot.bot.formatting import blocks, bold, esc
 from shopbot.bot.i18n import say, use_language
 from shopbot.bot.identity import open_buyer, open_merchant, remember_language
-from shopbot.bot.ui import buyer_menu, guarded, install_reply_keyboard, merchant_menu, session_factory, show
+from shopbot.bot.ui import (
+    buyer_menu,
+    buyer_reply_keyboard,
+    guarded,
+    install_reply_keyboard,
+    merchant_menu,
+    merchant_reply_keyboard,
+    session_factory,
+    show,
+)
 from shopbot.shop.user.service import set_user_language
 
 _CODES = {"zh", "en"}
@@ -55,5 +64,5 @@ async def _choose(update: Update, context: ContextTypes.DEFAULT_TYPE, *, merchan
         else say("语言已切换为中文。", "Language set to Chinese.")
     )
     await show(update, text, merchant_menu() if merchant else buyer_menu())
-    if not merchant:
-        await install_reply_keyboard(update)
+    keyboard = merchant_reply_keyboard() if merchant else buyer_reply_keyboard()
+    await install_reply_keyboard(update, keyboard)

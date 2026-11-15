@@ -42,7 +42,7 @@ def buyer_menu() -> InlineKeyboardMarkup:
 def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
     """输入框上方的快捷键。点下去等于发出按钮上的文字。
 
-    不保持常驻。点进输入框时由输入法盖住；收起后，客户端在输入框旁显示键盘图标，用来再打开它。
+    没点输入框时一直留着。点进输入框后由输入法盖住，输入框旁出现键盘图标，点一下再打开。
     """
     return ReplyKeyboardMarkup(
         [
@@ -51,7 +51,21 @@ def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(say("语言", "Language"))],
         ],
         resize_keyboard=True,
-        is_persistent=False,
+        is_persistent=True,
+    )
+
+
+def merchant_reply_keyboard() -> ReplyKeyboardMarkup:
+    """商家输入框上方的快捷键。出现时机和买家键盘相同。"""
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton(say("分类", "Categories")), KeyboardButton(say("商品", "Products"))],
+            [KeyboardButton(say("卡密", "Cards")), KeyboardButton(say("待发货", "To deliver"))],
+            [KeyboardButton(say("审计", "Audit")), KeyboardButton(say("支付渠道", "Payments"))],
+            [KeyboardButton(say("店铺设置", "Shop settings")), KeyboardButton(say("语言", "Language"))],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
     )
 
 
@@ -176,13 +190,13 @@ async def show_cover(update: Update, text: str, url: str, markup: InlineKeyboard
             return
 
 
-async def install_reply_keyboard(update: Update) -> None:
+async def install_reply_keyboard(update: Update, markup: ReplyKeyboardMarkup) -> None:
     """回复键盘和内联按钮不能挂在同一条消息上。发出后立刻删掉，键盘会留在输入框上方。"""
     message = update.effective_message
     if message is None:
         return
     try:
-        sent = await message.reply_text("\u2060", reply_markup=buyer_reply_keyboard())
+        sent = await message.reply_text("\u2060", reply_markup=markup)
     except (BadRequest, NetworkError, TimedOut):
         return
     try:
