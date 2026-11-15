@@ -9,6 +9,7 @@ from shopbot.bot.identity import open_buyer, open_merchant, remember_language
 from shopbot.bot.ui import (
     buyer_menu,
     buyer_reply_keyboard,
+    forget_message,
     guarded,
     install_reply_keyboard,
     merchant_menu,
@@ -63,6 +64,6 @@ async def _choose(update: Update, context: ContextTypes.DEFAULT_TYPE, *, merchan
         if code == "en"
         else say("语言已切换为中文。", "Language set to Chinese.")
     )
-    await show(update, text, merchant_menu() if merchant else buyer_menu())
     keyboard = merchant_reply_keyboard() if merchant else buyer_reply_keyboard()
-    await install_reply_keyboard(update, keyboard)
+    await install_reply_keyboard(update, keyboard, text)
+    await forget_message(update)

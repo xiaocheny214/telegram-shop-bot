@@ -18,16 +18,14 @@ from shopbot.bot.ui import (
 @guarded("bot:merchant")
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _load(update, context)
-    await show(
-        update,
-        blocks(
-            bold(say("商家后台", "Merchant desk")),
-            esc(say("管理分类、商品、卡密和待发货订单。", "Manage categories, products, cards, and orders waiting to ship.")),
-        ),
-        merchant_menu(),
+    text = blocks(
+        bold(say("商家后台", "Merchant desk")),
+        esc(say("管理分类、商品、卡密和待发货订单。", "Manage categories, products, cards, and orders waiting to ship.")),
     )
     if update.callback_query is None:
-        await install_reply_keyboard(update, merchant_reply_keyboard())
+        await install_reply_keyboard(update, merchant_reply_keyboard(), text)
+        return
+    await show(update, text, merchant_menu())
 
 
 @guarded("bot:merchant")
