@@ -1,4 +1,4 @@
-"""用户的创建、查询、停用和删除。
+"""用户的创建、查询、资料聚合、停用和删除。
 
 入参格式由 Pydantic 校验。写入和查询使用 ORM 绑定参数，不把输入拼进 SQL。
 创建、停用、删除在事务中执行。FastAPI 已开启事务时并入该事务。
@@ -13,7 +13,7 @@ from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.enums.model import UserRole
 from shopbot.framework.exceptions.biz import BizException
 from shopbot.shop.models import Order, User, WalletLedger
-from shopbot.shop.user.schemas import UserCreate, parse_model, parse_user_id
+from shopbot.shop.user.schemas import UserCreate, UserProfile, parse_model, parse_user_id
 from shopbot.system.audit.service import audit
 
 
@@ -34,6 +34,20 @@ async def get_user(session: AsyncSession, user_id: int) -> User:
     if user is None:
         raise BizException("用户不存在", code=BizCode.NOT_FOUND)
     return user
+
+
+async def get_user_profile(session: AsyncSession, user_id: int) -> UserProfile:
+    """给买家资料页用。用户不存在时沿用 get_user 的错误。订单数包含全部状态。"""
+    user = await get_user(session, user_id)
+    order_count = await session.scalar(select(func.count()).select_from(Order).where(Order.user_id == user.id))
+    return UserProfile(
+        user_id=user.id,
+        telegram_id=user.telegram_id,
+        username=user.username,
+        balance_usdt_cents=user.balance_usdt_cents,
+        order_count=int(order_count or 0),
+        created_at=user.created_at,
+    )
 
 
 async def get_user_by_telegram(session: AsyncSession, telegram_id: int) -> User:

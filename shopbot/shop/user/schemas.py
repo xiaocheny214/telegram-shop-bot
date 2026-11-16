@@ -1,5 +1,6 @@
-"""用户入参。格式由 Pydantic 校验，不负责数据库写入。"""
+"""用户入参和资料查询结果。格式由 Pydantic 校验，不负责数据库写入。"""
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
@@ -35,6 +36,19 @@ class UserCreate(BaseModel):
         if type(value) is not int or value not in UserRole._value2member_map_:
             raise ValueError("用户角色无效")
         return value
+
+
+class UserProfile(BaseModel):
+    """买家资料页的聚合结果。名字的展示由机器人用 Telegram 显示名决定。"""
+
+    model_config = ConfigDict(strict=True)
+
+    user_id: int
+    telegram_id: int
+    username: str | None
+    balance_usdt_cents: int
+    order_count: int
+    created_at: datetime
 
 
 def parse_user_id(value: int) -> int:

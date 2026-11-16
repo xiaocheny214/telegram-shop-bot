@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes, ConversationHandler, filters
 
 from shopbot.bot.buyer.catalog import browse
 from shopbot.bot.buyer.orders import orders
+from shopbot.bot.buyer.profile import profile
 from shopbot.bot.buyer.wallet import ASK_AMOUNT
 from shopbot.bot.buyer.wallet import _begin as begin_recharge
 from shopbot.bot.buyer.wallet import wallet
@@ -23,6 +24,7 @@ _LABELS = (
     ("钱包", "Wallet", "wallet"),
     ("充值", "Top up", "recharge"),
     ("语言", "Language", "language"),
+    ("我的", "Profile", "profile"),
 )
 _FORMS = ("buyer_checkout", "buyer_recharge")
 
@@ -58,6 +60,9 @@ async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if action == "language":
         await buyer_language(update, context)
+        return
+    if action == "profile":
+        await profile(update, context)
         return
     entered = await begin_recharge(update, context)
     if entered == ASK_AMOUNT:

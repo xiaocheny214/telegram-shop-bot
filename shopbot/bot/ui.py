@@ -34,7 +34,10 @@ def buyer_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(say("订单", "Orders"), callback_data="m:orders"),
                 InlineKeyboardButton(say("充值", "Top up"), callback_data="m:recharge"),
             ],
-            [InlineKeyboardButton(say("语言", "Language"), callback_data="m:lang")],
+            [
+                InlineKeyboardButton(say("我的", "Profile"), callback_data="m:me"),
+                InlineKeyboardButton(say("语言", "Language"), callback_data="m:lang"),
+            ],
         ]
     )
 
@@ -48,7 +51,7 @@ def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
         [
             [KeyboardButton(say("选购", "Shop")), KeyboardButton(say("钱包", "Wallet"))],
             [KeyboardButton(say("订单", "Orders")), KeyboardButton(say("充值", "Top up"))],
-            [KeyboardButton(say("语言", "Language"))],
+            [KeyboardButton(say("我的", "Profile")), KeyboardButton(say("语言", "Language"))],
         ],
         resize_keyboard=True,
         is_persistent=True,
