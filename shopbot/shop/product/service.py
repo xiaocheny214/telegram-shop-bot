@@ -231,6 +231,10 @@ async def delete_spec(session: AsyncSession, spec_id: int) -> None:
     await session.flush()
 
 
+async def get_spec(session: AsyncSession, spec_id: int) -> ProductSpec:
+    return await _get_spec(session, spec_id)
+
+
 async def _get_spec(session: AsyncSession, spec_id: int) -> ProductSpec:
     spec = await session.get(ProductSpec, parse_spec_id(spec_id))
     if spec is None:

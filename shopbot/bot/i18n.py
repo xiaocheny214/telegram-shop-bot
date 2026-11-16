@@ -89,6 +89,7 @@ _ERRORS = {
     "卡密包含非法字符": "A card contains an invalid character",
     "页码无效": "Invalid page",
     "每页条数无效": "Invalid page size",
+    "没有要修改的内容": "Nothing to change",
     "用户已启用": "This user is already active",
     "不能停用自己": "You cannot disable yourself",
     "调整编号生成失败": "Could not create an adjustment number",
