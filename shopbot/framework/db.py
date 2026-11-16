@@ -95,6 +95,7 @@ async def init_db(config: DatabaseConfig) -> AsyncEngine:
 _ADDED_COLUMNS = (
     ("shop_settings", "display_name", "VARCHAR(64)"),
     ("categories", "icon", "VARCHAR(16)"),
+    ("wallet_ledgers", "operator_user_id", "INTEGER"),
 )
 
 

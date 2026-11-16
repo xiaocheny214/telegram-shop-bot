@@ -12,6 +12,7 @@ from shopbot.framework.enums.model import (
     OrderStatus,
     PaymentProvider,
     StockDeductStrategy,
+    UserRole,
     UsdtNetwork,
     WalletDirection,
 )
@@ -202,12 +203,36 @@ def active_label(active: bool) -> str:
     return say("上架", "On sale") if active else say("下架", "Hidden")
 
 
+def user_state_label(active: bool) -> str:
+    return say("启用", "Active") if active else say("停用", "Disabled")
+
+
+def role_label(role: int) -> str:
+    if role == int(UserRole.ADMIN):
+        return say("管理员", "Admin")
+    if role == int(UserRole.USER):
+        return say("用户", "User")
+    return say("未知角色", "Unknown role")
+
+
 def format_time(value: datetime | None) -> str:
     if value is None:
         return "-"
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+_SIGNED = re.compile(r"^[+-]\d{1,8}(?:\.\d{1,2})?$")
+
+
+def parse_signed_cents(text: str) -> int:
+    """带正负号的金额。+10.50 入账，-3 出账。零无效。"""
+    raw = text.strip()
+    if not _SIGNED.fullmatch(raw):
+        raise BizException("金额无效", code=BizCode.BAD_REQUEST)
+    sign = -1 if raw[0] == "-" else 1
+    return sign * parse_cents(raw[1:])
 
 
 def parse_cents(text: str, *, allow_zero: bool = False) -> int:

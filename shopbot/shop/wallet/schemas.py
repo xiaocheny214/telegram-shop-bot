@@ -97,6 +97,7 @@ class WalletChange(BaseModel):
     reason: str
     ref_type: str | None = None
     ref_id: str | None = None
+    operator_user_id: int | None = None
 
     @field_validator("user_id")
     @classmethod
@@ -126,6 +127,15 @@ class WalletChange(BaseModel):
     @classmethod
     def check_ref_id(cls, value: str | None) -> str | None:
         return _text(value, "关联编号", _REF_ID_MAX, required=False)
+
+    @field_validator("operator_user_id")
+    @classmethod
+    def check_operator(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if type(value) is not int or value <= 0:
+            raise ValueError("用户编号无效")
+        return value
 
     @model_validator(mode="after")
     def check_ref(self) -> "WalletChange":

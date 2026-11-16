@@ -80,6 +80,16 @@ _ERRORS = {
     "店名包含非法字符": "Shop name contains an invalid character",
     "分类图标不能超过 16 个字符": "Category icon must be 16 characters or fewer",
     "分类图标包含非法字符": "Category icon contains an invalid character",
+    "用户已启用": "This user is already active",
+    "不能停用自己": "You cannot disable yourself",
+    "页码无效": "Invalid page",
+    "每页条数无效": "Invalid page size",
+    "调整编号生成失败": "Could not create an adjustment number",
+    "流水已存在": "This ledger entry already exists",
+    "原因不能为空": "A reason is required",
+    "原因过长": "The reason is too long",
+    "原因包含非法字符": "The reason contains an invalid character",
+    "用户编号无效": "Invalid user id",
 }
 
 
