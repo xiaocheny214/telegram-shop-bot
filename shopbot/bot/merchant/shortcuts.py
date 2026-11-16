@@ -17,6 +17,7 @@ from shopbot.bot.merchant.payment import show_channels
 from shopbot.bot.merchant.product import show_products
 from shopbot.bot.merchant.settings import show_settings
 from shopbot.bot.merchant.shipping import show_deliveries
+from shopbot.bot.merchant.users import show_users
 from shopbot.bot.ui import guarded
 
 _LABELS = (
@@ -27,6 +28,7 @@ _LABELS = (
     ("审计", "Audit", "audit"),
     ("支付渠道", "Payments", "payments"),
     ("店铺设置", "Shop settings", "settings"),
+    ("用户", "Users", "users"),
     ("语言", "Language", "language"),
 )
 _FORMS = (
@@ -35,6 +37,7 @@ _FORMS = (
     "merchant_spec",
     "merchant_product_edit",
     "merchant_cards",
+    "merchant_user",
     "merchant_audit",
     "merchant_payment",
     "merchant_settings",
@@ -45,6 +48,7 @@ _DRAFTS = (
     "spec_form",
     "edit_form",
     "card_form",
+    "user_form",
     "audit_action",
     "channel_draft",
     "setting_field",
@@ -91,6 +95,9 @@ async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if action == "settings":
         await show_settings(update, context)
+        return
+    if action == "users":
+        await show_users(update, context, 1)
         return
     await merchant_language(update, context)
 

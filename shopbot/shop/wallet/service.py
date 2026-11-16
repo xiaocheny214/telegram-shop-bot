@@ -25,6 +25,7 @@ from shopbot.framework.utils.snowflake import SnowflakeError, next_id
 from shopbot.shop.models import PaymentNotice, ShopSetting, User, WalletLedger, WalletRecharge
 from shopbot.shop.user.service import get_user
 from shopbot.shop.wallet.schemas import RechargeCreate, RechargePageQuery, WalletChange, parse_model
+from shopbot.system.audit.service import audit
 from shopbot.system.payment.confirm import VerifiedPayment
 from shopbot.system.payment.drivers import close_remote_payment, copy_payment_party, open_payment, payment_timeout_seconds
 from shopbot.system.payment.gateway import ChannelPayment
@@ -49,6 +50,39 @@ async def credit_balance(session: AsyncSession, payload: WalletChange | dict) ->
 async def debit_balance(session: AsyncSession, payload: WalletChange | dict) -> tuple[User, WalletLedger]:
     """减少余额，并写一条出账流水。余额不足时拒绝。"""
     return await _change(session, payload, WalletDirection.DEBIT)
+
+
+@audit("user.balance_adjust")
+@transactional
+async def adjust_balance(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    amount_usdt_cents: int,
+    reason: str,
+    operator_user_id: int,
+) -> tuple[User, WalletLedger]:
+    """商家增减用户余额。正数入账，负数出账。原因和操作者写在同一条流水上。"""
+    if type(amount_usdt_cents) is not int or amount_usdt_cents == 0:
+        raise BizException("金额无效", code=BizCode.BAD_REQUEST)
+    if type(operator_user_id) is not int or operator_user_id <= 0:
+        raise BizException("用户编号无效", code=BizCode.BAD_REQUEST)
+    await get_user(session, operator_user_id)
+    try:
+        ref_id = str(next_id())
+    except SnowflakeError as exc:
+        raise BizException("调整编号生成失败", code=BizCode.INTERNAL_ERROR) from exc
+    payload = {
+        "user_id": user_id,
+        "amount_usdt_cents": abs(amount_usdt_cents),
+        "reason": reason,
+        "ref_type": "admin_adjust",
+        "ref_id": ref_id,
+        "operator_user_id": operator_user_id,
+    }
+    if amount_usdt_cents > 0:
+        return await credit_balance(session, payload)
+    return await debit_balance(session, payload)
 
 
 async def get_balance(session: AsyncSession, user_id: int) -> int:
@@ -125,6 +159,7 @@ async def _change(
         reason=data.reason,
         ref_type=data.ref_type,
         ref_id=data.ref_id,
+        operator_user_id=data.operator_user_id,
     )
     session.add(ledger)
     await session.flush()

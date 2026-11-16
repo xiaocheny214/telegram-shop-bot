@@ -65,7 +65,8 @@ def merchant_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(say("分类", "Categories")), KeyboardButton(say("商品", "Products"))],
             [KeyboardButton(say("卡密", "Cards")), KeyboardButton(say("待发货", "To deliver"))],
             [KeyboardButton(say("审计", "Audit")), KeyboardButton(say("支付渠道", "Payments"))],
-            [KeyboardButton(say("店铺设置", "Shop settings")), KeyboardButton(say("语言", "Language"))],
+            [KeyboardButton(say("店铺设置", "Shop settings")), KeyboardButton(say("用户", "Users"))],
+            [KeyboardButton(say("语言", "Language"))],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -87,7 +88,10 @@ def merchant_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(say("审计", "Audit"), callback_data="mm:audit"),
                 InlineKeyboardButton(say("支付渠道", "Payments"), callback_data="mm:pay"),
             ],
-            [InlineKeyboardButton(say("店铺设置", "Shop settings"), callback_data="mm:set")],
+            [
+                InlineKeyboardButton(say("店铺设置", "Shop settings"), callback_data="mm:set"),
+                InlineKeyboardButton(say("用户", "Users"), callback_data="mm:user"),
+            ],
             [InlineKeyboardButton(say("语言", "Language"), callback_data="mm:lang")],
         ]
     )

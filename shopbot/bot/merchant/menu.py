@@ -20,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _load(update, context)
     text = blocks(
         bold(say("商家后台", "Merchant desk")),
-        esc(say("管理分类、商品、卡密和待发货订单。", "Manage categories, products, cards, and orders waiting to ship.")),
+        esc(say("管理分类、商品、卡密、用户和待发货订单。", "Manage categories, products, cards, users, and orders waiting to ship.")),
     )
     if update.callback_query is None:
         await install_reply_keyboard(update, merchant_reply_keyboard(), text)
@@ -69,6 +69,11 @@ async def route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from shopbot.bot.merchant.settings import show_settings
 
         await show_settings(update, context)
+        return
+    if data == "mm:user":
+        from shopbot.bot.merchant.users import show_users
+
+        await show_users(update, context, 1)
 
 
 async def _load(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

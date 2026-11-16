@@ -12,6 +12,7 @@ from shopbot.bot.merchant.payment import channels, payment_conversation
 from shopbot.bot.merchant.product import product_conversation, product_edit_conversation, products, spec_conversation
 from shopbot.bot.merchant.settings import settings_conversation
 from shopbot.bot.merchant.shipping import shipping
+from shopbot.bot.merchant.users import user_conversation, users
 
 
 def register_merchant(application: Application) -> None:
@@ -22,6 +23,7 @@ def register_merchant(application: Application) -> None:
     application.add_handler(spec_conversation())
     application.add_handler(product_edit_conversation())
     application.add_handler(card_conversation())
+    application.add_handler(user_conversation())
     application.add_handler(audit_conversation())
     application.add_handler(payment_conversation())
     application.add_handler(settings_conversation())
@@ -35,6 +37,7 @@ def register_merchant(application: Application) -> None:
         )
     )
     application.add_handler(CallbackQueryHandler(cards, pattern=r"^(kg:\d+|ki:\d+|ks:\d+:\d+|kl:\d+:\d+:[arsd]:\d+|kv:\d+|kx:\d+|ky:\d+)$"))
+    application.add_handler(CallbackQueryHandler(users, pattern=r"^(ug:\d+|uv:\d+|ud:\d+|ue:\d+|ub:\d+|un:\d+)$"))
     application.add_handler(CallbackQueryHandler(shipping, pattern=r"^(sg:\d+|sq:\d+|sy:\d+)$"))
     application.add_handler(CallbackQueryHandler(audits, pattern=r"^(ag:\d+|ax)$"))
     application.add_handler(CallbackQueryHandler(channels, pattern=r"^(qg:\d+|qt:\d+|qn)$"))

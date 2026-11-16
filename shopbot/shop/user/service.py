@@ -67,6 +67,35 @@ async def list_users(session: AsyncSession, *, active_only: bool = False) -> lis
     return list(result.all())
 
 
+async def page_users(session: AsyncSession, page: int, *, page_size: int = 5) -> tuple[list[User], bool]:
+    """按编号顺序翻页。多取一条用来判断还有没有下一页。"""
+    if type(page) is not int or page < 1:
+        raise BizException("页码无效", code=BizCode.BAD_REQUEST)
+    if type(page_size) is not int or not 1 <= page_size <= 20:
+        raise BizException("每页条数无效", code=BizCode.BAD_REQUEST)
+    offset = (page - 1) * page_size
+    rows = list(await session.scalars(select(User).order_by(User.id).offset(offset).limit(page_size + 1)))
+    has_more = len(rows) > page_size
+    return rows[:page_size], has_more
+
+
+async def find_users(session: AsyncSession, text: str) -> list[User]:
+    """按 Telegram 编号或用户名精确查找。编号命中时只返回那一个用户。"""
+    raw = text.strip()
+    if raw.startswith("@"):
+        raw = raw[1:].strip()
+    if not raw or len(raw) > 255 or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        return []
+    if raw.isdigit():
+        telegram_id = int(raw)
+        if 1 <= telegram_id <= 2**63 - 1:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is not None:
+                return [user]
+    rows = await session.scalars(select(User).where(User.username == raw).order_by(User.id).limit(6))
+    return list(rows.all())
+
+
 @audit("user.role")
 @transactional
 async def set_user_role(session: AsyncSession, user_id: int, role: int) -> User:
@@ -92,11 +121,24 @@ async def set_user_language(session: AsyncSession, user_id: int, language: str) 
 
 @audit("user.deactivate")
 @transactional
-async def deactivate_user(session: AsyncSession, user_id: int) -> User:
+async def deactivate_user(session: AsyncSession, user_id: int, *, actor_user_id: int | None = None) -> User:
     user = await get_user(session, user_id)
+    if actor_user_id is not None and actor_user_id == user.id:
+        raise BizException("不能停用自己", code=BizCode.FORBIDDEN)
     if not user.is_active:
         raise BizException("用户已停用", code=BizCode.CONFLICT)
     user.is_active = False
+    await session.flush()
+    return user
+
+
+@audit("user.activate")
+@transactional
+async def activate_user(session: AsyncSession, user_id: int) -> User:
+    user = await get_user(session, user_id)
+    if user.is_active:
+        raise BizException("用户已启用", code=BizCode.CONFLICT)
+    user.is_active = True
     await session.flush()
     return user
 

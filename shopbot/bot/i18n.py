@@ -90,6 +90,14 @@ _ERRORS = {
     "页码无效": "Invalid page",
     "每页条数无效": "Invalid page size",
     "没有要修改的内容": "Nothing to change",
+    "用户已启用": "This user is already active",
+    "不能停用自己": "You cannot disable yourself",
+    "调整编号生成失败": "Could not create an adjustment number",
+    "流水已存在": "This ledger entry already exists",
+    "原因不能为空": "A reason is required",
+    "原因过长": "The reason is too long",
+    "原因包含非法字符": "The reason contains an invalid character",
+    "用户编号无效": "Invalid user id",
 }
 
 

@@ -71,6 +71,7 @@ class WalletLedger(Base):
     reason: Mapped[str] = mapped_column(String(64))
     ref_type: Mapped[str | None] = mapped_column(String(32))
     ref_id: Mapped[str | None] = mapped_column(String(64))
+    operator_user_id: Mapped[int | None] = mapped_column()  # 人工调整时的管理员。充值和购买为空。不建外键，用户删除后流水仍留着
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
