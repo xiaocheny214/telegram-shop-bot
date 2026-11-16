@@ -80,6 +80,7 @@ _ERRORS = {
     "店名包含非法字符": "Shop name contains an invalid character",
     "分类图标不能超过 16 个字符": "Category icon must be 16 characters or fewer",
     "分类图标包含非法字符": "Category icon contains an invalid character",
+    "没有要修改的内容": "Nothing to change",
 }
 
 
