@@ -9,6 +9,7 @@
 支付成功才占用时，sell_card 不传 card_id，直接从可用库存取一张标为已售。
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import func, insert, or_, select, update
@@ -80,6 +81,83 @@ async def list_cards(
     for card in cards:
         show(card, "secret", reveal(card.secret) or "")
     return cards
+
+
+@dataclass(frozen=True)
+class CardPage:
+    items: list[Card]
+    page: int
+    page_size: int
+    has_more: bool
+
+
+async def page_cards(
+    session: AsyncSession,
+    product_id: int,
+    spec_id: int | None,
+    status: str,
+    page: int,
+    *,
+    page_size: int = 5,
+) -> CardPage:
+    """按商品、规格和状态翻页。只解密这一页的卡密。"""
+    if type(page) is not int or page < 1:
+        raise BizException("页码无效", code=BizCode.BAD_REQUEST)
+    if type(page_size) is not int or not 1 <= page_size <= 20:
+        raise BizException("每页条数无效", code=BizCode.BAD_REQUEST)
+    if status not in CardStatus._value2member_map_:
+        raise BizException("卡密状态无效", code=BizCode.BAD_REQUEST)
+    product, spec = await _import_target(session, product_id, spec_id)
+    offset = (page - 1) * page_size
+    statement = select(Card).where(Card.product_id == product.id, Card.status == status)
+    if spec is None:
+        statement = statement.where(Card.spec_id.is_(None))
+    else:
+        statement = statement.where(Card.spec_id == spec.id)
+    rows = list(
+        await session.scalars(statement.order_by(Card.id.desc()).offset(offset).limit(page_size + 1))
+    )
+    has_more = len(rows) > page_size
+    items = rows[:page_size]
+    for card in items:
+        show(card, "secret", reveal(card.secret) or "")
+    return CardPage(items=items, page=page, page_size=page_size, has_more=has_more)
+
+
+async def get_card(session: AsyncSession, card_id: int) -> Card:
+    card_id = parse_card_id(card_id)
+    card = await session.get(Card, card_id)
+    if card is None:
+        raise BizException("卡密不存在", code=BizCode.NOT_FOUND)
+    show(card, "secret", reveal(card.secret) or "")
+    return card
+
+
+@audit("card.update")
+@transactional
+async def update_available_card(session: AsyncSession, card_id: int, secret: str) -> Card:
+    """只改可用卡密的原文。库存数量不变。同一商品下原文不能重复。"""
+    card_id = parse_card_id(card_id)
+    plain = _one_secret(secret)
+    stored = protect(plain) or ""
+    card = await session.get(Card, card_id)
+    if card is None:
+        raise BizException("卡密不存在", code=BizCode.NOT_FOUND)
+    if card.status != CardStatus.AVAILABLE:
+        raise BizException("只有未使用的卡密可以修改", code=BizCode.CONFLICT)
+    taken = await session.scalar(
+        select(Card.id).where(
+            Card.product_id == card.product_id,
+            Card.id != card.id,
+            or_(Card.secret == stored, Card.secret == plain),
+        )
+    )
+    if taken is not None:
+        raise BizException("卡密已存在", code=BizCode.CONFLICT)
+    card.secret = stored
+    await session.flush()
+    show(card, "secret", plain)
+    return card
 
 
 @transactional
@@ -315,6 +393,19 @@ async def _stock_row(session: AsyncSession, product_id: int, spec_id: int | None
     else:
         statement = statement.where(CardStock.spec_id == spec_id)
     return await session.scalar(statement.limit(1))
+
+
+def _one_secret(value: str) -> str:
+    if not isinstance(value, str):
+        raise BizException("卡密内容不能为空", code=BizCode.BAD_REQUEST)
+    secret = value.strip()
+    if not secret:
+        raise BizException("卡密内容不能为空", code=BizCode.BAD_REQUEST)
+    if len(secret) > _SECRET_MAX:
+        raise BizException("卡密不能超过 2000 个字符", code=BizCode.BAD_REQUEST)
+    if any(ord(char) < 32 or ord(char) == 127 for char in secret):
+        raise BizException("卡密包含非法字符", code=BizCode.BAD_REQUEST)
+    return secret
 
 
 def _split_lines(text: str) -> tuple[list[tuple[int, str]], list[str], int]:
