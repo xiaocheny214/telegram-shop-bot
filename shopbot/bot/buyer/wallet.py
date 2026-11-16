@@ -1,5 +1,7 @@
 """余额、流水、充值记录，以及创建充值单。"""
 
+import logging
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
@@ -23,12 +25,13 @@ from shopbot.bot.formatting import (
 )
 from shopbot.bot.identity import open_buyer
 from shopbot.bot.ui import buyer_id, buyer_menu, callback_int, guarded, pager, pair, remind, session_factory, show
-from shopbot.framework.enums.model import Currency, PaymentProvider, UsdtNetwork
+from shopbot.framework.enums.model import ClientPlatform, Currency, OrderStatus, PaymentProvider, UsdtNetwork
 from shopbot.framework.exceptions.biz import BizException
-from shopbot.shop.wallet.service import get_balance, list_ledgers, list_user_recharges, recharge_wallet
+from shopbot.shop.wallet.service import attach_recharge_client, get_balance, list_ledgers, list_user_recharges, recharge_wallet
 from shopbot.system.payment.service import list_payment_channels
 
 ASK_AMOUNT, ASK_CHANNEL, ASK_NETWORK = range(3)
+logger = logging.getLogger(__name__)
 
 
 @guarded("bot:buyer")
@@ -239,6 +242,7 @@ async def _create(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dic
         facts(
             (say("单号", "No."), recharge.recharge_no),
             (say("金额", "Amount"), format_cents(recharge.amount_usdt_cents, int(Currency.USDT))),
+            (say("状态", "Status"), order_status_label(OrderStatus.PENDING)),
         ),
     ]
     if recharge.pay_amount:
@@ -248,7 +252,19 @@ async def _create(update: Update, context: ContextTypes.DEFAULT_TYPE, draft: dic
     if recharge.pay_url:
         parts.append(fact_link(say("支付链接", "Payment link"), recharge.pay_url))
     parts.append(esc(say("请在 {when} 前完成支付。", "Pay before {when}.", when=format_time(recharge.expires_at))))
-    await show(update, blocks(*parts), buyer_menu())
+    placed = await show(update, blocks(*parts), buyer_menu())
+    if placed is None or placed.chat is None:
+        return
+    try:
+        await attach_recharge_client(
+            session_factory(context),
+            recharge.id,
+            ClientPlatform.TELEGRAM,
+            chat_id=placed.chat.id,
+            message_id=placed.message_id,
+        )
+    except Exception:
+        logger.exception("充值来源没有记下 recharge_id=%s", recharge.id)
 
 
 @guarded("bot:buyer")
