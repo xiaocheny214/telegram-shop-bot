@@ -215,6 +215,27 @@ def role_label(role: int) -> str:
     return say("未知角色", "Unknown role")
 
 
+def card_status_label(status: str) -> str:
+    labels = {
+        "available": ("可用", "Available"),
+        "reserved": ("占用", "Reserved"),
+        "sold": ("已售", "Sold"),
+        "discarded": ("已作废", "Voided"),
+    }
+    pair = labels.get(status)
+    if pair is None:
+        return status
+    return say(*pair)
+
+
+def mask_secret(text: str) -> str:
+    if not text:
+        return say("（空）", "(empty)")
+    if len(text) <= 4:
+        return text
+    return text[:4] + "…"
+
+
 def format_time(value: datetime | None) -> str:
     if value is None:
         return "-"
