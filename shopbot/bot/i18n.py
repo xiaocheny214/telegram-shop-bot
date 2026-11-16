@@ -89,6 +89,7 @@ _ERRORS = {
     "卡密包含非法字符": "A card contains an invalid character",
     "页码无效": "Invalid page",
     "每页条数无效": "Invalid page size",
+    "没有要修改的内容": "Nothing to change",
 }
 
 
