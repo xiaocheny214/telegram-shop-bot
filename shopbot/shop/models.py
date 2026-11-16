@@ -98,6 +98,23 @@ class WalletRecharge(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class RechargeClient(Base):
+    """这笔充值从哪个端发起。充值单本身不记端。
+
+    Telegram 记下聊天和待支付消息。到账后另发一条，并删掉这一条。
+    卡网和 App 以后各加自己的定位，用 platform 区分。
+    """
+
+    __tablename__ = "recharge_clients"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recharge_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("wallet_recharges.id"), unique=True)
+    platform: Mapped[str] = mapped_column(String(16))  # telegram、card、app。见 ClientPlatform
+    chat_id: Mapped[int | None] = mapped_column(BigInteger)  # 仅 telegram。待支付消息所在的聊天
+    message_id: Mapped[int | None] = mapped_column()  # 仅 telegram。待支付消息编号
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Category(Base):
     __tablename__ = "categories"
 

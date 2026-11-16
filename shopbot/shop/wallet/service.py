@@ -5,6 +5,7 @@
 带关联编号的流水只能记一次，避免同一笔业务重复入账或扣款。
 充值走支付渠道，回调确认后入账。购买商品从余额扣款。
 渠道请求在写事务之外，由支付线程池执行。失败则关闭充值单。渠道已经建单时一并关闭远程订单。
+充值从哪个端发起记在 recharge_clients，不写在充值单上。
 """
 
 import logging
@@ -19,11 +20,12 @@ from shopbot.framework.admission import prepare_user_lookup, remember_missing_us
 from shopbot.framework.db import transactional
 from shopbot.framework.executor import run_blocking
 from shopbot.framework.enums.biz_code import BizCode
-from shopbot.framework.enums.model import Currency, OrderStatus, PaymentProvider, WalletDirection
+from shopbot.framework.enums.model import ClientPlatform, Currency, OrderStatus, PaymentProvider, WalletDirection
 from shopbot.framework.exceptions.biz import BizException
 from shopbot.framework.utils.snowflake import SnowflakeError, next_id
-from shopbot.shop.models import PaymentNotice, ShopSetting, User, WalletLedger, WalletRecharge
+from shopbot.shop.models import PaymentNotice, RechargeClient, ShopSetting, User, WalletLedger, WalletRecharge
 from shopbot.shop.user.service import get_user
+from shopbot.shop.wallet.notice import refresh_recharge_notice
 from shopbot.shop.wallet.schemas import RechargeCreate, RechargePageQuery, WalletChange, parse_model
 from shopbot.system.audit.service import audit
 from shopbot.system.payment.confirm import VerifiedPayment
@@ -337,6 +339,44 @@ async def _abort_recharge(factory: async_sessionmaker[AsyncSession], recharge_id
             if recharge is None or recharge.status != OrderStatus.PENDING:
                 return
             recharge.status = OrderStatus.CANCELLED
+
+
+async def attach_recharge_client(
+    factory: async_sessionmaker[AsyncSession],
+    recharge_id: int,
+    platform: str,
+    *,
+    chat_id: int | None = None,
+    message_id: int | None = None,
+) -> None:
+    """记下这笔充值从哪个端发起。Telegram 还要记下待支付消息，到账后另发一条并删掉它。"""
+    if platform not in ClientPlatform._value2member_map_:
+        raise BizException("参数无效", code=BizCode.BAD_REQUEST)
+    if platform == ClientPlatform.TELEGRAM and (
+        type(chat_id) is not int or chat_id == 0 or type(message_id) is not int or message_id <= 0
+    ):
+        raise BizException("参数无效", code=BizCode.BAD_REQUEST)
+    async with factory() as session:
+        async with session.begin():
+            recharge = await session.get(WalletRecharge, recharge_id)
+            if recharge is None:
+                raise BizException("订单不存在", code=BizCode.NOT_FOUND)
+            client = await session.scalar(select(RechargeClient).where(RechargeClient.recharge_id == recharge.id))
+            if client is None:
+                session.add(
+                    RechargeClient(
+                        recharge_id=recharge.id,
+                        platform=platform,
+                        chat_id=chat_id,
+                        message_id=message_id,
+                    )
+                )
+            else:
+                client.platform = platform
+                client.chat_id = chat_id
+                client.message_id = message_id
+            recharge_no = recharge.recharge_no
+    await refresh_recharge_notice(factory, recharge_no)
 
 
 async def settle_recharge(

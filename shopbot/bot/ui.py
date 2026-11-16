@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Any
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, Update
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes, ConversationHandler
 
@@ -162,8 +162,8 @@ def guarded(scope: str) -> Callable[[Handler], Handler]:
     return decorator
 
 
-async def show(update: Update, text: str, markup: InlineKeyboardMarkup | None = None) -> None:
-    await _send(update, clip_html(text), markup)
+async def show(update: Update, text: str, markup: InlineKeyboardMarkup | None = None) -> Message | None:
+    return await _send(update, clip_html(text), markup)
 
 
 _CAPTION_LIMIT = 1000
@@ -260,44 +260,52 @@ def _personal(update: Update) -> bool:
     return chat is not None and user is not None and chat.type == "private"
 
 
-async def _send(update: Update, text: str, markup: InlineKeyboardMarkup | None) -> None:
+async def _send(update: Update, text: str, markup: InlineKeyboardMarkup | None) -> Message | None:
     query = update.callback_query
     if query is not None:
         await _answer(query)
         try:
-            await _call(query.edit_message_text, text, reply_markup=markup, parse_mode="HTML")
-            return
+            return _placed(await _call(query.edit_message_text, text, reply_markup=markup, parse_mode="HTML"), query.message)
         except BadRequest as exc:
             lowered = str(exc).lower()
             if "not modified" in lowered:
-                return
+                return query.message
             if "parse" in lowered:
                 text = esc(text)
                 try:
-                    await _call(query.edit_message_text, text, reply_markup=markup, parse_mode="HTML")
-                    return
+                    return _placed(
+                        await _call(query.edit_message_text, text, reply_markup=markup, parse_mode="HTML"),
+                        query.message,
+                    )
                 except BadRequest as again:
                     if "not modified" in str(again).lower():
-                        return
+                        return query.message
         if query.message is not None:
-            await _call(query.message.reply_text, text, reply_markup=markup, parse_mode="HTML")
+            sent = _placed(await _call(query.message.reply_text, text, reply_markup=markup, parse_mode="HTML"), None)
             if query.message.photo:
                 try:
                     await query.message.delete()
                 except BadRequest:
-                    return
-            return
+                    return sent
+            return sent
+        return None
     message = update.effective_message
-    if message is not None:
-        await _call(message.reply_text, text, reply_markup=markup, parse_mode="HTML")
+    if message is None:
+        return None
+    return _placed(await _call(message.reply_text, text, reply_markup=markup, parse_mode="HTML"), None)
 
 
-async def _call(method, *args, **kwargs) -> None:
+def _placed(result: object, fallback: Message | None) -> Message | None:
+    if isinstance(result, Message):
+        return result
+    return fallback
+
+
+async def _call(method, *args, **kwargs):
     delay = 0.4
     for attempt in range(3):
         try:
-            await method(*args, **kwargs)
-            return
+            return await method(*args, **kwargs)
         except (NetworkError, TimedOut):
             if attempt == 2:
                 raise

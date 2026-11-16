@@ -71,3 +71,9 @@ class WalletDirection(StrEnum):
 class DeliveryStatus(StrEnum):
     PENDING = "pending"  # 待发送
     SENT = "sent"  # 已送达
+
+
+class ClientPlatform(StrEnum):
+    TELEGRAM = "telegram"  # Telegram 机器人
+    CARD = "card"  # 卡网。尚未接入
+    APP = "app"  # App。尚未接入

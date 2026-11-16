@@ -8,7 +8,7 @@
 下单时读取已配置的支付渠道和购买数量，把收银台地址写入订单详情。状态写成待支付。
 易支付、支付宝、微信按店铺汇率把商品金额折成人民币后再交给渠道。
 渠道支付只认异步回调。先验签，再向渠道查单，订单号和金额与本地一致才把卡密标为已售。同一订单只发一次。
-钱包充值确认后入账。选择商品并使用钱包付款时，立刻按汇率扣 USDT 余额，再占用卡密并发货。
+钱包充值确认后入账，并按发起端更新原来的待支付展示。选择商品并使用钱包付款时，立刻按汇率扣 USDT 余额，再占用卡密并发货。
 自动发货的商品接着把订单号、商品名称、商品详情、卡密和感谢话语发给买家。手动发货留给管理员发送。
 未支付订单过了 expires_at 后关闭。日常策略把占用的卡密退回库存，营销策略下单时没有占用库存。
 关单和支付都使用下单时记下的库存策略。订单已过期或已取消后，渠道仍确认付款的，重新占用卡密并发货。库存不够时不向渠道返回成功。
@@ -53,6 +53,7 @@ from shopbot.system.models import AlipayChannel, BepusdtChannel, EpayChannel, We
 from shopbot.system.payment.confirm import ChannelKeys, VerifiedPayment, confirm_callback
 from shopbot.system.payment.drivers import close_remote_payment, copy_payment_party, open_payment, payment_timeout_seconds
 from shopbot.system.payment.gateway import ChannelPayment
+from shopbot.shop.wallet.notice import refresh_recharge_notice
 from shopbot.shop.wallet.service import close_expired_recharges, debit_balance, settle_recharge, to_usdt_cents
 from shopbot.system.audit.service import audit
 from shopbot.system.payment.service import get_payment_channel
@@ -332,11 +333,13 @@ async def accept_payment_callback(
     verified = await asyncio.to_thread(lambda: confirm_callback(keys, **arguments))
     async with factory() as session:
         async with session.begin():
-            auto_order_id = await _settle_verified_payment(
+            auto_order_id, recharge_no = await _settle_verified_payment(
                 session, channel_id, provider, verified, _payload(form, data)
             )
     if auto_order_id is not None:
         await deliver_order(factory, auto_order_id, sender=sender, quiet=True)
+    if recharge_no is not None:
+        await refresh_recharge_notice(factory, recharge_no)
     return _ACK.get(PaymentProvider(provider), "success")
 
 
@@ -346,11 +349,11 @@ async def _settle_verified_payment(
     provider: int,
     verified: VerifiedPayment,
     payload: str,
-) -> int | None:
+) -> tuple[int | None, str | None]:
     order = await session.scalar(select(Order).where(Order.order_no == verified.order_no))
     if order is None:
         await settle_recharge(session, channel_id, provider, verified, payload)
-        return None
+        return None, verified.order_no
     if order.channel_id != channel_id or order.pay_provider != provider:
         raise BizException("支付渠道不符", code=BizCode.CONFLICT)
     detail = await session.get(OrderDetail, order.id)
@@ -360,7 +363,7 @@ async def _settle_verified_payment(
         raise BizException("支付金额不符", code=BizCode.CONFLICT)
     await _save_notice(session, verified, payload)
     if order.status in (OrderStatus.PAID, OrderStatus.DELIVERED):
-        return None
+        return None, None
     if order.status not in (OrderStatus.PENDING, OrderStatus.EXPIRED, OrderStatus.CANCELLED):
         raise BizException("订单不在待支付", code=BizCode.CONFLICT)
     result = await session.execute(
@@ -378,8 +381,8 @@ async def _settle_verified_payment(
         await strategy.after_create(session, order)
     await strategy.after_paid(session, order)
     if await prepare_delivery(session, order, product):
-        return order.id
-    return None
+        return order.id, None
+    return None, None
 
 
 async def _save_notice(session: AsyncSession, verified: VerifiedPayment, payload: str) -> None:
