@@ -34,7 +34,7 @@ def register_merchant(application: Application) -> None:
             pattern=r"^(pg:\d+|pv:\d+|pt:\d+|px:\d+|py:\d+|pn:\d+|pe:\d+|zc:\d+|pz:\d+:\d+|zd:\d+|ph:\d+:\d+|zs:\d+|pj:\d+:\d+|pf:\d+:\d+|pw:\d+:\d+|so:\d+|st:\d+|sx:\d+|sz:\d+)$",
         )
     )
-    application.add_handler(CallbackQueryHandler(cards, pattern=r"^kg:\d+$"))
+    application.add_handler(CallbackQueryHandler(cards, pattern=r"^(kg:\d+|ki:\d+|ks:\d+:\d+|kl:\d+:\d+:[arsd]:\d+|kv:\d+|kx:\d+|ky:\d+)$"))
     application.add_handler(CallbackQueryHandler(shipping, pattern=r"^(sg:\d+|sq:\d+|sy:\d+)$"))
     application.add_handler(CallbackQueryHandler(audits, pattern=r"^(ag:\d+|ax)$"))
     application.add_handler(CallbackQueryHandler(channels, pattern=r"^(qg:\d+|qt:\d+|qn)$"))
