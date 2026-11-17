@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from shopbot.system.models import ScheduledTask
 Handler = Callable[[async_sessionmaker[AsyncSession]], Awaitable[object]]
 _IDLE_SECONDS = 5.0
 _OPTIMIZE_SECONDS = 3600
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -50,11 +52,17 @@ async def run_scheduler(factory: async_sessionmaker[AsyncSession]) -> None:
     last_optimize = 0.0
     engine = factory.kw["bind"]
     while True:
-        try:
-            now = time.monotonic()
-            if optimize_due(last_optimize, now, _OPTIMIZE_SECONDS):
+        now = time.monotonic()
+        if optimize_due(last_optimize, now, _OPTIMIZE_SECONDS):
+            try:
                 await optimize(engine)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("sqlite optimize failed")
+            else:
                 last_optimize = now
+        try:
             delay = await run_due(factory)
         except asyncio.CancelledError:
             raise

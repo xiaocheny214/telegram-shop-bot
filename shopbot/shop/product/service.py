@@ -2,12 +2,13 @@
 
 入参格式由 Pydantic 校验。写入和查询使用 ORM 绑定参数，不把输入拼进 SQL。
 已售数量不从入参修改。新增、修改、删除在事务中执行。FastAPI 已开启事务时并入该事务。
+详情已存在时只读；缺详情行时才补一行空详情。
 """
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shopbot.framework.db import transactional
+from shopbot.framework.db import begin_immediate, commit_autobegin, transactional
 from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.enums.model import DeliveryMethod, OrderStatus
 from shopbot.framework.exceptions.biz import BizException
@@ -59,16 +60,19 @@ async def create_product(session: AsyncSession, payload: ProductCreate | dict) -
 
 
 
-@transactional
 async def get_product(session: AsyncSession, product_id: int) -> tuple[Product, ProductDetail]:
     product = await session.get(Product, parse_product_id(product_id))
     if product is None:
         raise BizException("商品不存在", code=BizCode.NOT_FOUND)
     detail = await session.get(ProductDetail, product.id)
     if detail is None:
-        detail = ProductDetail(product_id=product.id, description="", internal_remark=None)
-        session.add(detail)
-        await session.flush()
+        await commit_autobegin(session)
+        async with begin_immediate(session):
+            detail = await session.get(ProductDetail, product.id)
+            if detail is None:
+                detail = ProductDetail(product_id=product.id, description="", internal_remark=None)
+                session.add(detail)
+                await session.flush()
     show(detail, "internal_remark", reveal(detail.internal_remark))
     return product, detail
 

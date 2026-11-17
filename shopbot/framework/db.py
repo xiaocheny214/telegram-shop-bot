@@ -97,6 +97,27 @@ async def begin_immediate(session: AsyncSession):
         sync.info["sqlite_begin"] = "DEFERRED"
 
 
+async def commit_autobegin(session: AsyncSession) -> None:
+    """结束查询自动打开的事务，并保留已经装载的对象。
+
+    外层写事务保持不动。随后的 begin_immediate 在新事务里写入，
+    同一次会话里先查出来的对象不会因为回滚而过期。
+    """
+    sync = session.sync_session
+    transaction = sync.get_transaction()
+    if transaction is None:
+        return
+    if transaction.origin in {SessionTransactionOrigin.BEGIN, SessionTransactionOrigin.BEGIN_NESTED}:
+        return
+    if sync.info.get("sqlite_begin") == "IMMEDIATE":
+        return
+    if transaction.origin is not SessionTransactionOrigin.AUTOBEGIN:
+        return
+    if sync.new or sync.dirty or sync.deleted:
+        raise RuntimeError("写事务开始前会话里已有未提交修改")
+    await session.commit()
+
+
 @asynccontextmanager
 async def ensure_transaction(session: AsyncSession):
     """没有显式事务时开启并在成功后提交，失败时回滚。"""
