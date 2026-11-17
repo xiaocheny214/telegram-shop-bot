@@ -1,12 +1,12 @@
 """读取和修改店铺设置。
 
 没有记录时写入初始超时 900 秒、待支付上限 3。
-汇率为 0 表示未配置。写入在事务中执行。
+汇率为 0 表示未配置。已有记录只读，插入初始记录才拿写锁。修改在事务中执行。
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shopbot.framework.db import transactional
+from shopbot.framework.db import begin_immediate, commit_autobegin, transactional
 from shopbot.shop.models import ShopSetting
 from shopbot.shop.setting.schemas import ShopSettingUpdate, parse_model
 from shopbot.system.audit.service import audit
@@ -15,18 +15,21 @@ _DEFAULT_TIMEOUT_SECONDS = 900
 _DEFAULT_PENDING_LIMIT = 3
 
 
-@transactional
 async def get_shop_setting(session: AsyncSession) -> ShopSetting:
     setting = await session.get(ShopSetting, 1)
     if setting is not None:
         return setting
-    setting = ShopSetting(
-        id=1,
-        order_timeout_seconds=_DEFAULT_TIMEOUT_SECONDS,
-        max_pending_orders=_DEFAULT_PENDING_LIMIT,
-    )
-    session.add(setting)
-    await session.flush()
+    await commit_autobegin(session)
+    async with begin_immediate(session):
+        setting = await session.get(ShopSetting, 1)
+        if setting is None:
+            setting = ShopSetting(
+                id=1,
+                order_timeout_seconds=_DEFAULT_TIMEOUT_SECONDS,
+                max_pending_orders=_DEFAULT_PENDING_LIMIT,
+            )
+            session.add(setting)
+            await session.flush()
     return setting
 
 
