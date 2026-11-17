@@ -15,6 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shopbot.framework.client.telegram import send_telegram_message
+from shopbot.framework.db import begin_immediate
 from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.enums.model import CardStatus, DeliveryMethod, DeliveryStatus, OrderStatus
 from shopbot.shop.delivery.schemas import DeliveryPageQuery, parse_model
@@ -162,7 +163,7 @@ async def list_manual_deliveries(session: AsyncSession, payload: DeliveryPageQue
 async def _record_sent(factory: async_sessionmaker[AsyncSession], order_id: int) -> None:
     now = datetime.now(timezone.utc)
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             result = await session.execute(
                 update(Delivery)
                 .where(Delivery.order_id == order_id, Delivery.status == DeliveryStatus.PENDING)
@@ -178,7 +179,7 @@ async def _record_sent(factory: async_sessionmaker[AsyncSession], order_id: int)
 async def _record_failure(factory: async_sessionmaker[AsyncSession], order_id: int, exc: Exception) -> None:
     reason = exc.message if isinstance(exc, BizException) else "发货失败"
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             await session.execute(
                 update(Delivery)
                 .where(Delivery.order_id == order_id, Delivery.status == DeliveryStatus.PENDING)

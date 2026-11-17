@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shopbot.framework.db import begin_immediate
 from shopbot.framework.exceptions.biz import BizException
 from shopbot.system.models import ScheduledTask
 
@@ -57,7 +58,7 @@ async def run_scheduler(factory: async_sessionmaker[AsyncSession]) -> None:
 async def run_due(factory: async_sessionmaker[AsyncSession]) -> float:
     """执行到期任务，返回距离下一轮检查的秒数。"""
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             await _ensure_registered(session)
             views = await _load_views(session)
     now = datetime.now(timezone.utc)
@@ -115,7 +116,7 @@ async def _invoke(code: str, factory: async_sessionmaker[AsyncSession]) -> str |
 
 async def _mark_ran(factory: async_sessionmaker[AsyncSession], code: str, error: str | None) -> None:
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             task = await session.scalar(select(ScheduledTask).where(ScheduledTask.code == code))
             if task is None:
                 return

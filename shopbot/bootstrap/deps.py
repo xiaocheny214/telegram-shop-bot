@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shopbot.framework.db import begin_immediate
 from shopbot.system.audit.context import bind_request, reset_request
 from shopbot.system.audit.service import flush_audits
 
@@ -15,7 +16,7 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     try:
         async with request.app.state.session_factory() as session:
             try:
-                async with session.begin():
+                async with begin_immediate(session):
                     yield session
             finally:
                 await flush_audits()
