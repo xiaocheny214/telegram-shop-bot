@@ -3,12 +3,13 @@
 import sqlite3
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from functools import wraps
 from typing import Any
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, SessionTransactionOrigin
+from sqlalchemy.orm import DeclarativeBase, Session, SessionTransactionOrigin
 
 from shopbot.framework.config.database import DatabaseConfig
 
@@ -17,13 +18,16 @@ class Base(DeclarativeBase):
     pass
 
 
+_active_begin: ContextVar[str] = ContextVar("shopbot_sqlite_begin", default="DEFERRED")
+
+
 def create_engine(config: DatabaseConfig) -> AsyncEngine:
     engine = create_async_engine(config.url, echo=config.echo)
     timeout_ms = config.busy_timeout_ms
 
     @event.listens_for(engine.sync_engine, "connect")
     def _sqlite_pragmas(dbapi_connection, _connection_record) -> None:
-        # 关掉驱动自己的 BEGIN。事务由下面的事件发出 BEGIN IMMEDIATE，一进来就拿写锁。
+        # 关掉驱动自己的 BEGIN。读事务发 BEGIN，写事务由 begin_immediate 发 BEGIN IMMEDIATE。
         dbapi_connection.isolation_level = None
         cursor = dbapi_connection.cursor()
         if config.wal:
@@ -37,8 +41,11 @@ def create_engine(config: DatabaseConfig) -> AsyncEngine:
         cursor.close()
 
     @event.listens_for(engine.sync_engine, "begin")
-    def _begin_immediate(connection) -> None:
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
+    def _begin(connection) -> None:
+        if _active_begin.get() == "IMMEDIATE":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            return
+        connection.exec_driver_sql("BEGIN")
 
     return engine
 
@@ -47,30 +54,53 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
-@asynccontextmanager
-async def ensure_transaction(session: AsyncSession):
-    """没有显式事务时开启并在成功后提交，失败时回滚。
+def _open_immediate(sync_session: Session) -> None:
+    sync_session.info["sqlite_begin"] = "IMMEDIATE"
+    token = _active_begin.set("IMMEDIATE")
+    try:
+        sync_session.connection()
+    except Exception:
+        sync_session.info["sqlite_begin"] = "DEFERRED"
+        raise
+    finally:
+        _active_begin.reset(token)
 
-    查询会让会话自动开始事务，这种不算外层事务，写完后由这里提交。
-    调用方已经 begin 时，提交和回滚交给外层。
-    SQLite 事务都是 BEGIN IMMEDIATE，开始时就排队拿写锁。
+
+@asynccontextmanager
+async def begin_immediate(session: AsyncSession):
+    """写事务。开始时拿 SQLite 写锁，成功后提交，失败后回滚。
+
+    外层已经是立即写事务时直接复用。
+    外层只是查询自动打开的事务、且没有待提交修改时，先回滚再重新以 IMMEDIATE 开始。
+    回滚会使这次查询装载的对象过期。写入函数要使用自己查询或返回的对象。
     """
-    transaction = session.sync_session.get_transaction()
-    if transaction is not None and transaction.origin in {
-        SessionTransactionOrigin.BEGIN,
-        SessionTransactionOrigin.BEGIN_NESTED,
-    }:
+    sync = session.sync_session
+    transaction = sync.get_transaction()
+    if transaction is not None and (
+        transaction.origin in {SessionTransactionOrigin.BEGIN, SessionTransactionOrigin.BEGIN_NESTED}
+        or sync.info.get("sqlite_begin") == "IMMEDIATE"
+    ):
         yield
         return
     if transaction is not None and transaction.origin is SessionTransactionOrigin.AUTOBEGIN:
-        try:
-            yield
-        except Exception:
-            await session.rollback()
-            raise
+        if sync.new or sync.dirty or sync.deleted:
+            raise RuntimeError("写事务开始前会话里已有未提交修改")
+        await session.rollback()
+    await session.run_sync(_open_immediate)
+    try:
+        yield
         await session.commit()
-        return
-    async with session.begin():
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        sync.info["sqlite_begin"] = "DEFERRED"
+
+
+@asynccontextmanager
+async def ensure_transaction(session: AsyncSession):
+    """没有显式事务时开启并在成功后提交，失败时回滚。"""
+    async with begin_immediate(session):
         yield
 
 

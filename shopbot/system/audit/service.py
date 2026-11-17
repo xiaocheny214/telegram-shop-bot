@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shopbot.framework.db import begin_immediate
 from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.exceptions.biz import BizException
 from shopbot.system.audit.context import current_context
@@ -277,7 +278,7 @@ async def _insert_rows(rows: list[_Entry]) -> None:
     if _factory is None:
         return
     async with _factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             session.add_all(
                 [
                     AuditLog(

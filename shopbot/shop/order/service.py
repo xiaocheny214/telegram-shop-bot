@@ -28,7 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shopbot.framework.admission import prepare_user_lookup, remember_missing_user, write_slot
-from shopbot.framework.db import transactional
+from shopbot.framework.db import begin_immediate, transactional
 from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.enums.model import Currency, OrderStatus, PaymentProvider, StockDeductStrategy
 from shopbot.framework.exceptions.biz import BizException
@@ -203,7 +203,7 @@ async def _store_channel_payment(
     payment: ChannelPayment,
 ) -> tuple[Order, OrderDetail]:
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             order = await session.get(Order, order_id)
             if order is None or order.status != OrderStatus.PENDING:
                 raise BizException("订单不在待支付", code=BizCode.CONFLICT)
@@ -225,7 +225,7 @@ async def _store_channel_payment(
 
 async def _abort_pending_order(factory: async_sessionmaker[AsyncSession], order_id: int) -> None:
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             order = await session.get(Order, order_id)
             if order is None or order.status != OrderStatus.PENDING:
                 return
@@ -332,7 +332,7 @@ async def accept_payment_callback(
         arguments["opener"] = opener
     verified = await asyncio.to_thread(lambda: confirm_callback(keys, **arguments))
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             auto_order_id, recharge_no = await _settle_verified_payment(
                 session, channel_id, provider, verified, _payload(form, data)
             )
@@ -586,7 +586,7 @@ async def close_expired_orders(factory: async_sessionmaker[AsyncSession]) -> int
     closed = 0
     for order_id in order_ids:
         async with factory() as session:
-            async with session.begin():
+            async with begin_immediate(session):
                 if await _expire_one(session, order_id, datetime.now(timezone.utc)):
                     closed += 1
     closed += await close_expired_recharges(factory)
