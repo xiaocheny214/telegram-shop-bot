@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shopbot.framework.admission import prepare_user_lookup, remember_missing_user, write_slot
@@ -164,7 +165,10 @@ async def _change(
         operator_user_id=data.operator_user_id,
     )
     session.add(ledger)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        raise BizException("流水已存在", code=BizCode.CONFLICT) from exc
     await session.refresh(user)
     return user, ledger
 
