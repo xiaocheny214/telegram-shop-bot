@@ -122,6 +122,7 @@ async def init_db(config: DatabaseConfig) -> AsyncEngine:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
         await connection.run_sync(_ensure_columns)
+        await connection.run_sync(_ensure_indexes)
     return engine
 
 
@@ -141,6 +142,52 @@ def _ensure_columns(connection) -> None:
         names = {row[1] for row in rows}
         if column not in names:
             connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))
+
+
+_NEW_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS ix_orders_user_created ON orders (user_id, created_at, id)",
+    "CREATE INDEX IF NOT EXISTS ix_wallet_recharges_user_created ON wallet_recharges (user_id, created_at, id)",
+    "CREATE INDEX IF NOT EXISTS ix_wallet_ledgers_user_id_id ON wallet_ledgers (user_id, id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_wallet_ledgers_ref ON wallet_ledgers (user_id, direction, ref_type, ref_id) "
+    "WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS ix_cards_claim ON cards (product_id, status, spec_id, id)",
+    "CREATE INDEX IF NOT EXISTS ix_users_username ON users (username)",
+)
+
+_RETIRED_INDEXES = (
+    "ix_wallet_recharges_user_id",
+    "ix_wallet_ledgers_user_id",
+    "ix_cards_product_id",
+    "ix_cards_status",
+    "ix_cards_product_spec_status",
+)
+
+
+def _ensure_indexes(connection) -> None:
+    tables = {
+        row[0]
+        for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
+    }
+    if "wallet_ledgers" in tables:
+        duplicates = connection.execute(
+            text(
+                "SELECT user_id, direction, ref_type, ref_id, COUNT(*) "
+                "FROM wallet_ledgers "
+                "WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL "
+                "GROUP BY user_id, direction, ref_type, ref_id "
+                "HAVING COUNT(*) > 1 "
+                "LIMIT 5"
+            )
+        ).fetchall()
+        if duplicates:
+            raise RuntimeError(f"wallet_ledgers 存在重复入账，先处理后再启动: {duplicates}")
+    for statement in _NEW_INDEXES:
+        table = statement.split(" ON ", 1)[1].split(" ", 1)[0]
+        if table not in tables:
+            continue
+        connection.execute(text(statement))
+    for name in _RETIRED_INDEXES:
+        connection.execute(text(f"DROP INDEX IF EXISTS {name}"))
 
 
 def _allow_order_without_product(path) -> None:

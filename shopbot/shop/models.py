@@ -47,7 +47,10 @@ class ShopSetting(Base):
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (CheckConstraint("balance_usdt_cents >= 0", name="ck_users_balance_non_negative"),)
+    __table_args__ = (
+        CheckConstraint("balance_usdt_cents >= 0", name="ck_users_balance_non_negative"),
+        Index("ix_users_username", "username"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
@@ -63,9 +66,21 @@ class WalletLedger(Base):
     """余额流水。余额本身在 users.balance_usdt_cents。"""
 
     __tablename__ = "wallet_ledgers"
+    __table_args__ = (
+        Index("ix_wallet_ledgers_user_id_id", "user_id", "id"),
+        Index(
+            "ux_wallet_ledgers_ref",
+            "user_id",
+            "direction",
+            "ref_type",
+            "ref_id",
+            unique=True,
+            sqlite_where=text("ref_type IS NOT NULL AND ref_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     amount_usdt_cents: Mapped[int]
     direction: Mapped[str] = mapped_column(String(16))
     reason: Mapped[str] = mapped_column(String(64))
@@ -79,11 +94,14 @@ class WalletRecharge(Base):
     """充值。支付成功后把 USDT 分记入余额，不发货。"""
 
     __tablename__ = "wallet_recharges"
-    __table_args__ = (Index("ix_wallet_recharges_status_expires", "status", "expires_at"),)
+    __table_args__ = (
+        Index("ix_wallet_recharges_status_expires", "status", "expires_at"),
+        Index("ix_wallet_recharges_user_created", "user_id", "created_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     recharge_no: Mapped[str] = mapped_column(String(64), unique=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     channel_id: Mapped[int] = mapped_column(ForeignKey("payment_channels.id"))
     pay_provider: Mapped[int]
     pay_network: Mapped[int | None] = mapped_column()
@@ -218,16 +236,16 @@ class Card(Base):
     __tablename__ = "cards"
     __table_args__ = (
         UniqueConstraint("product_id", "secret"),
-        Index("ix_cards_product_spec_status", "product_id", "spec_id", "status"),
+        Index("ix_cards_claim", "product_id", "status", "spec_id", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int | None] = mapped_column(ForeignKey("card_import_batches.id"), index=True)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     product_name: Mapped[str] = mapped_column(String(128))  # 导入时的商品名称，避免再查商品表
     spec_id: Mapped[int | None] = mapped_column(ForeignKey("product_specs.id"), index=True)
     secret: Mapped[str] = mapped_column(Text)  # 卡密内容。同一原文加密后相同，用来去重
-    status: Mapped[str] = mapped_column(String(16), default=CardStatus.AVAILABLE, index=True)
+    status: Mapped[str] = mapped_column(String(16), default=CardStatus.AVAILABLE)
     order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("orders.id"), index=True)  # 占用或售出时写入，释放后清空
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -240,6 +258,7 @@ class Order(Base):
     __table_args__ = (
         Index("ix_orders_user_pending", "user_id", "status", "expires_at"),
         Index("ix_orders_status_expires", "status", "expires_at"),
+        Index("ix_orders_user_created", "user_id", "created_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)  # 雪花算法生成，不使用数据库自增
