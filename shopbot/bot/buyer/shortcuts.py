@@ -16,28 +16,24 @@ from shopbot.bot.buyer.wallet import ASK_AMOUNT
 from shopbot.bot.buyer.wallet import _begin as begin_recharge
 from shopbot.bot.buyer.wallet import wallet
 from shopbot.bot.language import buyer_language
-from shopbot.bot.ui import guarded
+from shopbot.bot.ui import BUYER_MENU_ITEMS, guarded, menu_aliases
 
-_LABELS = (
-    ("选购", "Shop", "shop"),
-    ("订单", "Orders", "orders"),
-    ("钱包", "Wallet", "wallet"),
-    ("充值", "Top up", "recharge"),
-    ("语言", "Language", "language"),
-    ("我的", "Profile", "profile"),
-)
 _FORMS = ("buyer_checkout", "buyer_recharge")
 
 
 def shortcut_filter():
-    parts = [re.escape(label) for zh, en, _action in _LABELS for label in (zh, en)]
+    parts = [
+        re.escape(alias)
+        for zh, en, emoji, _callback, _action in BUYER_MENU_ITEMS
+        for alias in menu_aliases(zh, en, emoji)
+    ]
     return filters.Regex(rf"^({'|'.join(parts)})$")
 
 
 def shortcut_action(text: str) -> str | None:
     raw = text.strip()
-    for zh, en, action in _LABELS:
-        if raw == zh or raw == en:
+    for zh, en, emoji, _callback, action in BUYER_MENU_ITEMS:
+        if raw in menu_aliases(zh, en, emoji):
             return action
     return None
 
