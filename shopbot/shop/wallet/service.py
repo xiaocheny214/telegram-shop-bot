@@ -14,10 +14,11 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shopbot.framework.admission import prepare_user_lookup, remember_missing_user, write_slot
-from shopbot.framework.db import transactional
+from shopbot.framework.db import begin_immediate, transactional
 from shopbot.framework.executor import run_blocking
 from shopbot.framework.enums.biz_code import BizCode
 from shopbot.framework.enums.model import ClientPlatform, Currency, OrderStatus, PaymentProvider, WalletDirection
@@ -164,7 +165,10 @@ async def _change(
         operator_user_id=data.operator_user_id,
     )
     session.add(ledger)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        raise BizException("流水已存在", code=BizCode.CONFLICT) from exc
     await session.refresh(user)
     return user, ledger
 
@@ -317,7 +321,7 @@ async def _store_recharge_payment(
     payment: ChannelPayment,
 ) -> WalletRecharge:
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             recharge = await session.get(WalletRecharge, recharge_id)
             if recharge is None or recharge.status != OrderStatus.PENDING:
                 raise BizException("充值单不在待支付", code=BizCode.CONFLICT)
@@ -334,7 +338,7 @@ async def _store_recharge_payment(
 
 async def _abort_recharge(factory: async_sessionmaker[AsyncSession], recharge_id: int) -> None:
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             recharge = await session.get(WalletRecharge, recharge_id)
             if recharge is None or recharge.status != OrderStatus.PENDING:
                 return
@@ -357,7 +361,7 @@ async def attach_recharge_client(
     ):
         raise BizException("参数无效", code=BizCode.BAD_REQUEST)
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             recharge = await session.get(WalletRecharge, recharge_id)
             if recharge is None:
                 raise BizException("订单不存在", code=BizCode.NOT_FOUND)
@@ -439,7 +443,7 @@ async def close_expired_recharges(factory: async_sessionmaker[AsyncSession]) -> 
     closed = 0
     for recharge_id in recharge_ids:
         async with factory() as session:
-            async with session.begin():
+            async with begin_immediate(session):
                 recharge = await session.get(WalletRecharge, recharge_id)
                 if recharge is None or recharge.status != OrderStatus.PENDING:
                     continue

@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shopbot.framework.client.telegram import delete_telegram_message, send_telegram_notice
+from shopbot.framework.db import begin_immediate
 from shopbot.framework.enums.model import ClientPlatform, OrderStatus, UsdtNetwork
 from shopbot.shop.models import RechargeClient, User, WalletRecharge
 
@@ -88,7 +89,7 @@ async def _telegram_notice(factory: async_sessionmaker[AsyncSession], recharge_n
 async def _take_message(factory: async_sessionmaker[AsyncSession], recharge_id: int, message_id: int) -> bool:
     """同一条待支付消息只通知一次。占住之后重复回调不再发新消息。"""
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             result = await session.execute(
                 update(RechargeClient)
                 .where(RechargeClient.recharge_id == recharge_id, RechargeClient.message_id == message_id)
@@ -100,7 +101,7 @@ async def _take_message(factory: async_sessionmaker[AsyncSession], recharge_id: 
 async def _restore_message(factory: async_sessionmaker[AsyncSession], recharge_id: int, message_id: int) -> None:
     """新消息没发出去时把位置放回去，下次回调还能再试。"""
     async with factory() as session:
-        async with session.begin():
+        async with begin_immediate(session):
             await session.execute(
                 update(RechargeClient)
                 .where(RechargeClient.recharge_id == recharge_id, RechargeClient.message_id.is_(None))
