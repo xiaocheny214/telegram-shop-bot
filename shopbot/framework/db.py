@@ -123,6 +123,7 @@ async def init_db(config: DatabaseConfig) -> AsyncEngine:
         await connection.run_sync(Base.metadata.create_all)
         await connection.run_sync(_ensure_columns)
         await connection.run_sync(_ensure_indexes)
+    await optimize(engine)
     return engine
 
 
@@ -161,6 +162,23 @@ _RETIRED_INDEXES = (
     "ix_cards_status",
     "ix_cards_product_spec_status",
 )
+
+
+def optimize_due(last: float, now: float, interval: float = 3600) -> bool:
+    return now - last >= interval
+
+
+def _optimize_raw(connection) -> None:
+    raw = connection.connection.dbapi_connection
+    cursor = raw.cursor()
+    cursor.execute("PRAGMA optimize")
+    cursor.execute("PRAGMA wal_checkpoint(PASSIVE)")
+    cursor.close()
+
+
+async def optimize(engine: AsyncEngine) -> None:
+    async with engine.connect() as connection:
+        await connection.run_sync(_optimize_raw)
 
 
 def _ensure_indexes(connection) -> None:
