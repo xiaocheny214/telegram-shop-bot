@@ -30,6 +30,10 @@ def create_engine(config: DatabaseConfig) -> AsyncEngine:
             cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute(f"PRAGMA busy_timeout={timeout_ms}")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-8000")
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        cursor.execute("PRAGMA journal_size_limit=67108864")
         cursor.close()
 
     @event.listens_for(engine.sync_engine, "begin")
