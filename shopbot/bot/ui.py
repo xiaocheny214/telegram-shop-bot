@@ -22,24 +22,40 @@ logger = logging.getLogger("shopbot.bot")
 
 Handler = Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[Any]]
 
+# 中文、英文、图标、回调、快捷键动作。内联菜单和输入框快捷键共用这一份。
+BUYER_MENU_ITEMS = (
+    ("选购", "Shop", "🛍", "m:shop", "shop"),
+    ("钱包", "Wallet", "👛", "m:wallet", "wallet"),
+    ("订单", "Orders", "📋", "m:orders", "orders"),
+    ("充值", "Top up", "💳", "m:recharge", "recharge"),
+    ("我的", "Profile", "👤", "m:me", "profile"),
+    ("语言", "Language", "🌐", "m:lang", "language"),
+)
+MERCHANT_MENU_ITEMS = (
+    ("分类", "Categories", "🗂", "mm:cat", "categories"),
+    ("商品", "Products", "📦", "mm:prod", "products"),
+    ("卡密", "Cards", "🔑", "mm:card", "cards"),
+    ("待发货", "To deliver", "🚚", "mm:ship", "deliveries"),
+    ("审计", "Audit", "📜", "mm:audit", "audit"),
+    ("支付渠道", "Payments", "💳", "mm:pay", "payments"),
+    ("店铺设置", "Shop settings", "⚙️", "mm:set", "settings"),
+    ("用户", "Users", "👥", "mm:user", "users"),
+    ("语言", "Language", "🌐", "mm:lang", "language"),
+)
+
+
+def menu_label(zh: str, en: str, emoji: str) -> str:
+    """主菜单按钮。图标在前，中英文用同一个图标。"""
+    return f"{emoji} {say(zh, en)}"
+
+
+def menu_aliases(zh: str, en: str, emoji: str) -> tuple[str, ...]:
+    """快捷键可能发来的文字。带图标的是当前键盘，纯文字是还留在聊天里的旧键盘。"""
+    return (f"{emoji} {zh}", f"{emoji} {en}", zh, en)
+
 
 def buyer_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(say("选购", "Shop"), callback_data="m:shop"),
-                InlineKeyboardButton(say("钱包", "Wallet"), callback_data="m:wallet"),
-            ],
-            [
-                InlineKeyboardButton(say("订单", "Orders"), callback_data="m:orders"),
-                InlineKeyboardButton(say("充值", "Top up"), callback_data="m:recharge"),
-            ],
-            [
-                InlineKeyboardButton(say("我的", "Profile"), callback_data="m:me"),
-                InlineKeyboardButton(say("语言", "Language"), callback_data="m:lang"),
-            ],
-        ]
-    )
+    return InlineKeyboardMarkup(_inline_rows(BUYER_MENU_ITEMS))
 
 
 def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
@@ -47,61 +63,36 @@ def buyer_reply_keyboard() -> ReplyKeyboardMarkup:
 
     没点输入框时一直留着。点进输入框后由输入法盖住，输入框旁出现键盘图标，点一下再打开。
     """
-    return ReplyKeyboardMarkup(
-        [
-            [KeyboardButton(say("选购", "Shop")), KeyboardButton(say("钱包", "Wallet"))],
-            [KeyboardButton(say("订单", "Orders")), KeyboardButton(say("充值", "Top up"))],
-            [KeyboardButton(say("我的", "Profile")), KeyboardButton(say("语言", "Language"))],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    return _reply_rows(BUYER_MENU_ITEMS)
 
 
 def merchant_reply_keyboard() -> ReplyKeyboardMarkup:
     """商家输入框上方的快捷键。出现时机和买家键盘相同。"""
-    return ReplyKeyboardMarkup(
-        [
-            [KeyboardButton(say("分类", "Categories")), KeyboardButton(say("商品", "Products"))],
-            [KeyboardButton(say("卡密", "Cards")), KeyboardButton(say("待发货", "To deliver"))],
-            [KeyboardButton(say("审计", "Audit")), KeyboardButton(say("支付渠道", "Payments"))],
-            [KeyboardButton(say("店铺设置", "Shop settings")), KeyboardButton(say("用户", "Users"))],
-            [KeyboardButton(say("语言", "Language"))],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    return _reply_rows(MERCHANT_MENU_ITEMS)
 
 
 def merchant_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(say("分类", "Categories"), callback_data="mm:cat"),
-                InlineKeyboardButton(say("商品", "Products"), callback_data="mm:prod"),
-            ],
-            [
-                InlineKeyboardButton(say("卡密", "Cards"), callback_data="mm:card"),
-                InlineKeyboardButton(say("待发货", "To deliver"), callback_data="mm:ship"),
-            ],
-            [
-                InlineKeyboardButton(say("审计", "Audit"), callback_data="mm:audit"),
-                InlineKeyboardButton(say("支付渠道", "Payments"), callback_data="mm:pay"),
-            ],
-            [
-                InlineKeyboardButton(say("店铺设置", "Shop settings"), callback_data="mm:set"),
-                InlineKeyboardButton(say("用户", "Users"), callback_data="mm:user"),
-            ],
-            [InlineKeyboardButton(say("语言", "Language"), callback_data="mm:lang")],
-        ]
-    )
+    return InlineKeyboardMarkup(_inline_rows(MERCHANT_MENU_ITEMS))
+
+
+def _inline_rows(items: tuple[tuple[str, str, str, str, str], ...]) -> list[list[InlineKeyboardButton]]:
+    buttons = [
+        InlineKeyboardButton(menu_label(zh, en, emoji), callback_data=callback)
+        for zh, en, emoji, callback, _action in items
+    ]
+    return rows_of(buttons, 2)
+
+
+def _reply_rows(items: tuple[tuple[str, str, str, str, str], ...]) -> ReplyKeyboardMarkup:
+    buttons = [KeyboardButton(menu_label(zh, en, emoji)) for zh, en, emoji, _callback, _action in items]
+    return ReplyKeyboardMarkup(rows_of(buttons, 2), resize_keyboard=True, is_persistent=True)
 
 
 def pair(buttons: list[InlineKeyboardButton]) -> list[list[InlineKeyboardButton]]:
     return rows_of(buttons, 2)
 
 
-def rows_of(buttons: list[InlineKeyboardButton], width: int) -> list[list[InlineKeyboardButton]]:
+def rows_of[T](buttons: list[T], width: int) -> list[list[T]]:
     return [buttons[i : i + width] for i in range(0, len(buttons), width)]
 
 

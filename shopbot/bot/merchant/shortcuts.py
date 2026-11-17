@@ -18,19 +18,8 @@ from shopbot.bot.merchant.product import show_products
 from shopbot.bot.merchant.settings import show_settings
 from shopbot.bot.merchant.shipping import show_deliveries
 from shopbot.bot.merchant.users import show_users
-from shopbot.bot.ui import guarded
+from shopbot.bot.ui import MERCHANT_MENU_ITEMS, guarded, menu_aliases
 
-_LABELS = (
-    ("分类", "Categories", "categories"),
-    ("商品", "Products", "products"),
-    ("卡密", "Cards", "cards"),
-    ("待发货", "To deliver", "deliveries"),
-    ("审计", "Audit", "audit"),
-    ("支付渠道", "Payments", "payments"),
-    ("店铺设置", "Shop settings", "settings"),
-    ("用户", "Users", "users"),
-    ("语言", "Language", "language"),
-)
 _FORMS = (
     "merchant_category",
     "merchant_product",
@@ -56,14 +45,18 @@ _DRAFTS = (
 
 
 def shortcut_filter():
-    parts = [re.escape(label) for zh, en, _action in _LABELS for label in (zh, en)]
+    parts = [
+        re.escape(alias)
+        for zh, en, emoji, _callback, _action in MERCHANT_MENU_ITEMS
+        for alias in menu_aliases(zh, en, emoji)
+    ]
     return filters.Regex(rf"^({'|'.join(parts)})$")
 
 
 def shortcut_action(text: str) -> str | None:
     raw = text.strip()
-    for zh, en, action in _LABELS:
-        if raw == zh or raw == en:
+    for zh, en, emoji, _callback, action in MERCHANT_MENU_ITEMS:
+        if raw in menu_aliases(zh, en, emoji):
             return action
     return None
 
