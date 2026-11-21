@@ -17,6 +17,7 @@ from shopbot.bot.merchant.payment import show_channels
 from shopbot.bot.merchant.product import show_products
 from shopbot.bot.merchant.settings import show_settings
 from shopbot.bot.merchant.shipping import show_deliveries
+from shopbot.bot.merchant.tasks import show_tasks
 from shopbot.bot.merchant.users import show_users
 from shopbot.bot.ui import MERCHANT_MENU_ITEMS, guarded, menu_aliases
 
@@ -30,6 +31,7 @@ _FORMS = (
     "merchant_audit",
     "merchant_payment",
     "merchant_settings",
+    "merchant_tasks",
 )
 _DRAFTS = (
     "category_form",
@@ -41,6 +43,7 @@ _DRAFTS = (
     "audit_action",
     "channel_draft",
     "setting_field",
+    "task_id",
 )
 
 
@@ -88,6 +91,9 @@ async def shortcut(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if action == "settings":
         await show_settings(update, context)
+        return
+    if action == "tasks":
+        await show_tasks(update, context, 1)
         return
     if action == "users":
         await show_users(update, context, 1)

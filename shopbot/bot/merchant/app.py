@@ -12,6 +12,7 @@ from shopbot.bot.merchant.payment import channels, payment_conversation
 from shopbot.bot.merchant.product import product_conversation, product_edit_conversation, products, spec_conversation
 from shopbot.bot.merchant.settings import settings_conversation
 from shopbot.bot.merchant.shipping import shipping
+from shopbot.bot.merchant.tasks import task_conversation, tasks
 from shopbot.bot.merchant.users import user_conversation, users
 
 
@@ -27,6 +28,7 @@ def register_merchant(application: Application) -> None:
     application.add_handler(audit_conversation())
     application.add_handler(payment_conversation())
     application.add_handler(settings_conversation())
+    application.add_handler(task_conversation())
     application.add_handler(CallbackQueryHandler(merchant_language, pattern=r"^mm:lang"))
     application.add_handler(CallbackQueryHandler(route, pattern=r"^mm:"))
     application.add_handler(CallbackQueryHandler(categories, pattern=r"^(cg:\d+|ct:\d+|cd:\d+|cy:\d+|cv:\d+)$"))
@@ -41,3 +43,4 @@ def register_merchant(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(shipping, pattern=r"^(sg:\d+|sq:\d+|sy:\d+)$"))
     application.add_handler(CallbackQueryHandler(audits, pattern=r"^(ag:\d+|ax)$"))
     application.add_handler(CallbackQueryHandler(channels, pattern=r"^(qg:\d+|qt:\d+|qn)$"))
+    application.add_handler(CallbackQueryHandler(tasks, pattern=r"^(tg:\d+|tt:\d+)$"))

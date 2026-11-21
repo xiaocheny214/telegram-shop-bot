@@ -39,6 +39,7 @@ MERCHANT_MENU_ITEMS = (
     ("审计", "Audit", "📜", "mm:audit", "audit"),
     ("支付渠道", "Payments", "💳", "mm:pay", "payments"),
     ("店铺设置", "Shop settings", "⚙️", "mm:set", "settings"),
+    ("定时任务", "Tasks", "⏱", "mm:task", "tasks"),
     ("用户", "Users", "👥", "mm:user", "users"),
     ("语言", "Language", "🌐", "mm:lang", "language"),
 )
